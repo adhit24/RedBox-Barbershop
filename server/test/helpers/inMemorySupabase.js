@@ -266,6 +266,22 @@ function createInMemorySupabase(store, opts = {}) {
           if (missingEligible.length > 0) {
             return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${missingEligible.length} eligible employee(s) are missing from the payroll run. Recalculate to reconcile the population first.` } });
           }
+          // Two-way equality, the OTHER direction (P1, PRRT_kwDOSNmW7c6klJoV): an existing item whose
+          // employee is no longer eligible rejects the lock too, re-derived straight from employees --
+          // independent of whether recalculation (and population_changed) ever ran.
+          const employeesById = new Map((store.employees || []).map((e) => [e.id, e]));
+          const extraItems = (store.payroll_regular_items || []).filter((i) => {
+            if (i.payroll_run_id !== runRow.id) return false;
+            const e = employeesById.get(i.employee_id);
+            const eligible = !!e && e.is_active === true &&
+              (e.employment_type == null || e.employment_type === 'regular') &&
+              (!e.join_date || e.join_date <= runRow.period_end) &&
+              (runRow.business_unit === 'ALL' || e.business_unit === runRow.business_unit);
+            return !eligible;
+          });
+          if (extraItems.length > 0) {
+            return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: payroll item exists for employee no longer eligible` } });
+          }
         }
         // lock invariant: an item flagged no-longer-eligible (population_changed) cannot be locked
         const populationChangedItem = (store.payroll_regular_items || []).find((i) => i.payroll_run_id === runRow.id && i.attendance_summary?.population_changed === true);

@@ -307,17 +307,31 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
       continue;
     }
 
-    // Priority 1: Known mapping in identity table (machine-scoped)
+    // Priority 1: Known mapping in identity table (machine-scoped) -- authoritative ONLY while the
+    // mapped target is still active (PRRT_kwDOSNmW7c6klJoY). A person mapped while active must not
+    // keep silently receiving attendance after being deactivated. dbEmployees/dbBarbers already carry
+    // only active rows (loadMatchingContext), so membership there IS the active check; the historical
+    // mapping row itself is never deleted (audit evidence, still authoritative once reactivated).
     if (identityMap.has(extId)) {
       const idn = identityMap.get(extId);
-      matched.push({
-        ...fe,
-        match_type: 'identity_mapping',
-        target_type: idn.target_type,
-        employee_id: idn.employee_id || null,
-        barber_id: idn.barber_id || null,
-        target_name: idn.external_name || extName,
-      });
+      const targetActive = idn.target_type === 'barber'
+        ? dbBarbers.some(b => b.id === idn.barber_id)
+        : dbEmployees.some(e => e.id === idn.employee_id);
+      if (targetActive) {
+        matched.push({
+          ...fe,
+          match_type: 'identity_mapping',
+          target_type: idn.target_type,
+          employee_id: idn.employee_id || null,
+          barber_id: idn.barber_id || null,
+          target_name: idn.external_name || extName,
+        });
+        continue;
+      }
+      // Mapped target is no longer active: do NOT write attendance and do NOT auto-remap through a
+      // lower-priority rule (position 2/3/4 could bind this machine identity to someone else entirely).
+      // Route to manual review via the existing unmatched/exception lifecycle instead.
+      unmatched.push({ ...fe, reason: 'mapped_target_inactive' });
       continue;
     }
 

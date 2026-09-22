@@ -212,6 +212,41 @@ test('Reconciliation: existing real punches are unioned, never overwritten by ab
   assert.deepEqual(d26.raw_punches, ['08:00', '12:00', '17:00']);
 });
 
+// ---- PRRT_kwDOSNmW7c6klJoY: existing machine-scoped mapping is authority only while the target is active ----
+
+test('Reconciliation: a deactivated mapped employee gets no attendance written, exception created instead', async () => {
+  const store = seedStore();
+  // First import while Agus is active: establishes the Priority 1 scoped mapping.
+  await commit(store);
+  assert.ok(rowsOf(store, AGUS).length > 0);
+  const before = store.employee_attendance.filter((r) => r.employee_id === AGUS).length;
+
+  // Agus is deactivated (resignation processed) before the next import.
+  store.employees.find((e) => e.id === AGUS).is_active = false;
+
+  const res = await commit(store);
+  // No NEW attendance written for the now-inactive Agus.
+  assert.equal(store.employee_attendance.filter((r) => r.employee_id === AGUS).length, before);
+  // Routed to manual review via the existing unmatched/exception lifecycle, not silently dropped.
+  assert.ok(res.unmatched_count > 0);
+  const exc = store.attendance_exceptions.find((e) => e.external_employee_id === '1' && e.exception_type === 'unmatched_employee');
+  assert.ok(exc, 'a deactivated mapped identity with punch evidence must still be reported for manual review');
+});
+
+test('Reconciliation: the historical identity mapping row survives deactivation (audit evidence preserved)', async () => {
+  const store = seedStore();
+  await commit(store);
+  const before = store.employee_attendance_identity.find((i) => i.external_employee_id === '1' && i.employee_id === AGUS);
+  assert.ok(before);
+
+  store.employees.find((e) => e.id === AGUS).is_active = false;
+  await commit(store);
+
+  const after = store.employee_attendance_identity.find((i) => i.external_employee_id === '1' && i.employee_id === AGUS);
+  assert.ok(after, 'the mapping row must not be deleted while the target is inactive');
+  assert.equal(after.employee_id, AGUS);
+});
+
 test('Reconciliation: machine-scoped manual mapping is stored per machine, not globally', async () => {
   const store = seedStore();
   await importer.commitImport({

@@ -133,6 +133,53 @@ test('4. Overtime calculation (hours * 7500)', () => {
   assert.equal(res.gross_pay >= 1150000, true);
 });
 
+test('4b. Overtime money is computed from exact approved minutes, not rounded hours (PRRT_kwDOSNmW7c6klJoN)', () => {
+  const employee = {
+    id: 'emp-4b',
+    name: 'Precise Overtime Worker',
+    business_unit: 'Redbox',
+    position: 'Cashier',
+    base_salary: 1000000,
+  };
+  const cases = [
+    [15, 1875],
+    [30, 3750],
+    [45, 5625],
+    [60, 7500],
+    [75, 9375],
+    [17, 2125],
+    [31, 3875],
+    [47, 5875],
+  ];
+  for (const [minutes, expectedAmount] of cases) {
+    const res = calculateRegularPayrollItem({
+      employee,
+      attendanceSummary: { present_days: 30, approved_overtime_minutes: minutes },
+    });
+    assert.equal(res.overtime_amount, expectedAmount, `${minutes} minutes should pay Rp${expectedAmount}`);
+  }
+});
+
+test('4c. variables.approved_overtime_minutes takes priority over attendanceSummary.overtime_hours', () => {
+  const employee = { id: 'emp-4c', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30, overtime_hours: 0.3 }, // stale/rounded display value
+    variables: { approved_overtime_minutes: 15 },
+  });
+  assert.equal(res.overtime_amount, 1875, 'exact minutes must win over a stale rounded hours value');
+});
+
+test('4d. no exact minutes available falls back to hours (backward compatible, not worse than before)', () => {
+  const employee = { id: 'emp-4d', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30 },
+    variables: { approved_overtime_hours: 20 },
+  });
+  assert.equal(res.overtime_amount, 150000);
+});
+
 test('5. Late deduction (occurrence * 15000)', () => {
   const employee = {
     id: 'emp-5',

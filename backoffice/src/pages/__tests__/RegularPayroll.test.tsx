@@ -305,6 +305,62 @@ describe('RegularPayroll (Operational Payroll Page)', () => {
       const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
       expect(input.value).toBe('90');
     });
+
+    // PRRT_kwDOSNmW7c6klJoS: the value APPROVE submits must always equal the value the input DISPLAYS.
+    it('fresh PENDING (raw=90): field shows 90, Approve without editing sends approved_minutes=90', async () => {
+      vi.mocked(regularPayrollService.reviewOvertimeApproval).mockResolvedValue({ success: true, approval: approval({}) } as never);
+      await openModal([approval({ raw_overtime_minutes: 90 })]);
+      const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
+      expect(input.value).toBe('90');
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => {
+        expect(regularPayrollService.reviewOvertimeApproval).toHaveBeenCalledWith(
+          'ot-1',
+          expect.objectContaining({ status: 'APPROVED', approved_minutes: 90 })
+        );
+      });
+    });
+
+    it('manually changing the field to 60 sends approved_minutes=60', async () => {
+      vi.mocked(regularPayrollService.reviewOvertimeApproval).mockResolvedValue({ success: true, approval: approval({}) } as never);
+      await openModal([approval({ raw_overtime_minutes: 90 })]);
+      const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '60' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => {
+        expect(regularPayrollService.reviewOvertimeApproval).toHaveBeenCalledWith(
+          'ot-1',
+          expect.objectContaining({ status: 'APPROVED', approved_minutes: 60 })
+        );
+      });
+    });
+
+    it('an explicit 0 typed by the manager sends approved_minutes=0 (intentional, not a fallback)', async () => {
+      vi.mocked(regularPayrollService.reviewOvertimeApproval).mockResolvedValue({ success: true, approval: approval({}) } as never);
+      await openModal([approval({ raw_overtime_minutes: 90 })]);
+      const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '0' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => {
+        expect(regularPayrollService.reviewOvertimeApproval).toHaveBeenCalledWith(
+          'ot-1',
+          expect.objectContaining({ status: 'APPROVED', approved_minutes: 0 })
+        );
+      });
+    });
+
+    it('reject path is unaffected: sends approved_minutes=0 regardless of the (irrelevant) input value', async () => {
+      vi.mocked(regularPayrollService.reviewOvertimeApproval).mockResolvedValue({ success: true, approval: approval({}) } as never);
+      await openModal([approval({ raw_overtime_minutes: 90 })]);
+      await screen.findByLabelText('Approved overtime minutes ot-1');
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      await waitFor(() => {
+        expect(regularPayrollService.reviewOvertimeApproval).toHaveBeenCalledWith(
+          'ot-1',
+          expect.objectContaining({ status: 'REJECTED', approved_minutes: 0 })
+        );
+      });
+    });
   });
 
   describe('recalculate payroll action', () => {

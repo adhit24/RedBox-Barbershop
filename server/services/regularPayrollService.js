@@ -1768,11 +1768,22 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
     // for this run's business unit/period must already have an item. The DB lock_payroll_run RPC
     // independently re-verifies this (authoritative backstop) -- this Node check only fails fast.
     const eligibleNow = await fetchEligibleRegularEmployees(supabase, { businessUnit: guardRun.business_unit, periodEnd: guardRun.period_end });
+    const eligibleNowIds = new Set(eligibleNow.map((e) => e.id));
     const itemEmployeeIds = new Set(runItems.map((i) => i.employee_id));
     const missingEligible = eligibleNow.filter((e) => !itemEmployeeIds.has(e.id));
     if (missingEligible.length > 0) {
       const err = new Error(`Cannot lock regular payroll run: ${missingEligible.length} eligible employee(s) are missing from the payroll run. Recalculate to reconcile the population first.`);
       err.code = 'POPULATION_INCOMPLETE';
+      throw err;
+    }
+    // Two-way equality, the OTHER direction (P1, PRRT_kwDOSNmW7c6klJoV): an existing item whose employee
+    // is no longer eligible rejects the lock too, independent of whether recalculation (and the
+    // population_changed marker) ever ran -- re-derived straight from fetchEligibleRegularEmployees, not
+    // reliant on any prior marker. The DB lock_payroll_run RPC independently re-verifies this too.
+    const extraItem = runItems.find((i) => !eligibleNowIds.has(i.employee_id));
+    if (extraItem) {
+      const err = new Error(`Cannot lock regular payroll run: payroll item exists for employee no longer eligible (${extraItem.employee_name_snapshot}). Reconcile the population before locking.`);
+      err.code = 'POPULATION_EXTRA_ITEM';
       throw err;
     }
     const populationChangedItem = runItems.find((i) => i.attendance_summary?.population_changed === true);

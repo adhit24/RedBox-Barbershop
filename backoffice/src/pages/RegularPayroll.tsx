@@ -327,8 +327,14 @@ export function RegularPayroll() {
     try {
       let approvedMinutes = 0;
       if (status === 'APPROVED') {
+        // Submit the SAME value the input actually displays (PRRT_kwDOSNmW7c6klJoS): the display
+        // fallback is defaultApprovedOvertimeMinutes(ot), not 0, so approving without editing must
+        // send that value too -- never silently fall back to 0 just because the input map hasn't been
+        // seeded for this row yet.
+        const ot = overtimeApprovals.find((o) => o.id === otId);
+        const displayedMinutes = overtimeMinutesInput[otId] ?? (ot ? defaultApprovedOvertimeMinutes(ot) : 0);
         // The Approve button bypasses native input validation, so validate here (backend enforces it too).
-        const parsed = parseApprovedOvertimeMinutes(overtimeMinutesInput[otId] ?? 0);
+        const parsed = parseApprovedOvertimeMinutes(displayedMinutes);
         if (parsed === null) {
           setActionMessage({ type: 'error', text: 'Menit lembur yang disetujui harus berupa angka 0 atau lebih.' });
           return;

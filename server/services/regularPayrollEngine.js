@@ -174,14 +174,27 @@ function calculateRegularPayrollItem({
   const attendanceAllowance = roundRupiah(allowances.attendance_allowance || 0);
   const attendanceAllowanceSource = allowances.attendance_allowance_source || SOURCE_ORIGIN.POLICY_PENDING;
 
-  // 6. Overtime
-  const approvedOvertimeHours = Number(
-    variables.approved_overtime_hours !== undefined
-      ? variables.approved_overtime_hours
-      : (attendanceSummary.overtime_hours || 0)
+  // 6. Overtime -- approved MINUTES are authoritative and exact; money is derived directly from them,
+  // never from a pre-rounded hours value (Codex round-12 P1, PRRT_kwDOSNmW7c6klJoN). Rounding minutes
+  // to 1-decimal hours BEFORE multiplying by the rate loses precision (15 min -> 0.3h -> Rp2,250
+  // instead of the correct 15/60 * rate = Rp1,875). `approved_overtime_hours` (variables or
+  // attendanceSummary.overtime_hours) is accepted only as a fallback for callers that have not been
+  // updated to pass exact minutes (e.g. a manual hours override), and `overtime_hours` on the result is
+  // for DISPLAY only -- it is never used to compute overtime_amount.
+  const approvedOvertimeMinutes = Number(
+    variables.approved_overtime_minutes !== undefined
+      ? variables.approved_overtime_minutes
+      : attendanceSummary.approved_overtime_minutes !== undefined
+        ? attendanceSummary.approved_overtime_minutes
+        : Math.round(Number(
+            variables.approved_overtime_hours !== undefined
+              ? variables.approved_overtime_hours
+              : (attendanceSummary.overtime_hours || 0)
+          ) * 60)
   );
+  const approvedOvertimeHours = Math.round((approvedOvertimeMinutes / 60) * 10) / 10; // display only
   const overtimeRate = policy.overtimeRate || 7500;
-  const overtimeAmount = roundRupiah(approvedOvertimeHours * overtimeRate);
+  const overtimeAmount = roundRupiah((approvedOvertimeMinutes / 60) * overtimeRate);
 
   // 7. Product Commission & Service Barber (Rule 15 & 16)
   const productCommission = roundRupiah(variables.product_commission || 0);

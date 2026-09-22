@@ -32,6 +32,85 @@ test('Machine identity: same machine ID on two machines maps independently (no c
   assert.equal(legacy.matched[0].barber_id, 'csb-yudha');
 });
 
+// ---- PRRT_kwDOSNmW7c6klJoY: an existing machine-scoped mapping is identity authority only while the target is still active ----
+
+test('Machine identity: a mapped employee who is still active is accepted (Priority 1)', () => {
+  const identities = [
+    { source: 'fingerprint:bypass', external_employee_id: '3', target_type: 'employee', employee_id: 'emp-agus' },
+  ];
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Whoever' }],
+    dbEmployees, dbBarbers, existingIdentities: identities, machineSource: 'bypass',
+  });
+  assert.equal(matched.length, 1);
+  assert.equal(matched[0].match_type, 'identity_mapping');
+  assert.equal(matched[0].employee_id, 'emp-agus');
+  assert.equal(unmatched.length, 0);
+});
+
+test('Machine identity: same employee later deactivated -> new import rejected/ignored, no auto-remap', () => {
+  const identities = [
+    { source: 'fingerprint:bypass', external_employee_id: '3', target_type: 'employee', employee_id: 'emp-agus' },
+  ];
+  // Emp-agus is no longer in the active roster (loadMatchingContext only ever loads is_active=true rows).
+  const activeEmployeesWithoutAgus = dbEmployees.filter((e) => e.id !== 'emp-agus');
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Whoever' }],
+    dbEmployees: activeEmployeesWithoutAgus, dbBarbers, existingIdentities: identities, machineSource: 'bypass',
+  });
+  assert.equal(matched.length, 0, 'must NOT auto-map (write attendance) for a deactivated mapped target');
+  assert.equal(unmatched.length, 1);
+  assert.equal(unmatched[0].reason, 'mapped_target_inactive');
+});
+
+test('Machine identity: an inactive mapped barber is also rejected, not silently remapped', () => {
+  const identities = [
+    { source: 'fingerprint', external_employee_id: '3', target_type: 'barber', barber_id: 'csb-yudha' },
+  ];
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Whoever' }],
+    dbEmployees, dbBarbers: [], existingIdentities: identities, // barber roster no longer includes csb-yudha
+  });
+  assert.equal(matched.length, 0);
+  assert.equal(unmatched.length, 1);
+  assert.equal(unmatched[0].reason, 'mapped_target_inactive');
+});
+
+test('Machine identity: an inactive mapped target never falls through to a lower-priority auto-map', () => {
+  // emp-agus employee_code coincidentally matches the file's external id/name too -- if the inactive
+  // mapping fell through to Priority 2/3/4 it would silently re-bind to someone else's identity.
+  const withCode = dbEmployees.map((e) => (e.id === 'emp-adam' ? { ...e, employee_code: '3' } : e));
+  const identities = [
+    { source: 'fingerprint:bypass', external_employee_id: '3', target_type: 'employee', employee_id: 'emp-agus' },
+  ];
+  const activeWithoutAgus = withCode.filter((e) => e.id !== 'emp-agus');
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Adam Apriliano Fahrezy' }],
+    dbEmployees: activeWithoutAgus, dbBarbers, existingIdentities: identities, machineSource: 'bypass',
+  });
+  assert.equal(matched.length, 0, 'must not fall through to employee_code/name matching once flagged inactive');
+  assert.equal(unmatched[0].reason, 'mapped_target_inactive');
+});
+
+test('Machine identity: reactivating the mapped employee restores Priority 1 matching (mapping row was never deleted)', () => {
+  const identities = [
+    { source: 'fingerprint:bypass', external_employee_id: '3', target_type: 'employee', employee_id: 'emp-agus' },
+  ];
+  const activeWithoutAgus = dbEmployees.filter((e) => e.id !== 'emp-agus');
+  const whileInactive = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Whoever' }],
+    dbEmployees: activeWithoutAgus, dbBarbers, existingIdentities: identities, machineSource: 'bypass',
+  });
+  assert.equal(whileInactive.matched.length, 0);
+
+  // The same historical identity row (never deleted) is reused once emp-agus is active again.
+  const backActive = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Whoever' }],
+    dbEmployees, dbBarbers, existingIdentities: identities, machineSource: 'bypass',
+  });
+  assert.equal(backActive.matched[0]?.employee_id, 'emp-agus');
+});
+
 test('Machine identity: business unit / filename never decide the match (Sundaze staff on Bypass machine)', () => {
   const { matched, unmatched } = importer.matchEmployees({
     fileEmployees: [{ external_employee_id: '30', external_name: 'Agus', department: 'ADMIN' }],
