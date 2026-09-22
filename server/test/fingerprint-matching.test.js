@@ -34,7 +34,30 @@ test('Fingerprint Matching: Priority 1 - Deterministic Identity Mapping', () => 
   assert.equal(matched[0].employee_id, 'emp-uuid-1');
 });
 
-test('Fingerprint Matching: Priority 2 - Employee Code', () => {
+test('Fingerprint Matching: Priority 2 - Employee Code, corroborated by nickname (PRRT_kwDOSNmW7c6kYVyh)', () => {
+  // A machine ID is only unique within its own machine, so employee_code alone is no longer
+  // sufficient authority for a brand-new machine identity: it must be corroborated by an exact
+  // normalized name/nickname match to the SAME employee.
+  const fileEmployees = [
+    { external_employee_id: 'RB-042', external_name: 'Budi' },
+  ];
+  const dbEmployees = [
+    { id: 'emp-uuid-2', employee_code: 'RB-042', name: 'Budi Santoso', nickname: 'Budi' },
+  ];
+
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees,
+    dbEmployees,
+    dbBarbers: [],
+    existingIdentities: [],
+  });
+
+  assert.equal(matched.length, 1);
+  assert.equal(matched[0].match_type, 'employee_code');
+  assert.equal(matched[0].employee_id, 'emp-uuid-2');
+});
+
+test('Fingerprint Matching: Priority 2 - Employee Code WITHOUT name corroboration is NOT auto-mapped', () => {
   const fileEmployees = [
     { external_employee_id: 'RB-042', external_name: 'Budi' },
   ];
@@ -49,9 +72,9 @@ test('Fingerprint Matching: Priority 2 - Employee Code', () => {
     existingIdentities: [],
   });
 
-  assert.equal(matched.length, 1);
-  assert.equal(matched[0].match_type, 'employee_code');
-  assert.equal(matched[0].employee_id, 'emp-uuid-2');
+  assert.equal(matched.length, 0);
+  assert.equal(unmatched.length, 1);
+  assert.equal(unmatched[0].reason, 'employee_code_name_mismatch');
 });
 
 test('Fingerprint Matching: Priority 3 - Normalized Whitespace / Case Exact Match', () => {

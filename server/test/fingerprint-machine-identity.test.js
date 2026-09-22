@@ -83,6 +83,89 @@ test('Terminated guard: inactive DB names are rejected too, active same-name sta
   assert.equal(r2.unmatched[0].reason, 'ambiguous_terminated_name');
 });
 
+// ---- PRRT_kwDOSNmW7c6kYVyh: employee_code alone is not authority for a brand-new machine identity ----
+
+const dbEmployeesWithCodes = [
+  { id: 'emp-a', employee_code: '3', name: 'Employee A', nickname: 'A', business_unit: 'Redbox', branch: 'bypass' },
+  { id: 'emp-b', employee_code: '99', name: 'Employee B', nickname: 'B', business_unit: 'Redbox', branch: 'tegal' },
+];
+
+test('Machine ID corroboration: reused ID is NOT auto-mapped via employee_code alone when the name differs', () => {
+  // Bypass: ID 3 -> Employee A (already correct via employee_code, name corroborates)
+  const bypass = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Employee A' }],
+    dbEmployees: dbEmployeesWithCodes,
+    machineSource: 'bypass',
+  });
+  assert.equal(bypass.matched[0]?.employee_id, 'emp-a');
+
+  // Samadikun: first import, ID 3 belongs to a DIFFERENT person (Employee B) on this machine.
+  // No scoped identity exists yet for fingerprint:samadikun, so global employee_code=3 (Employee A)
+  // must NOT be trusted merely because the code matches.
+  const samadikun = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Employee B' }],
+    dbEmployees: dbEmployeesWithCodes,
+    machineSource: 'samadikun',
+  });
+  assert.equal(samadikun.matched.length, 0, 'must NOT map Samadikun ID 3 to Employee A merely because employee_code=3');
+  assert.equal(samadikun.unmatched.length, 1);
+  assert.equal(samadikun.unmatched[0].reason, 'employee_code_name_mismatch');
+});
+
+test('Machine ID corroboration: employee_code + exact normalized name match still auto-maps', () => {
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Employee A' }],
+    dbEmployees: dbEmployeesWithCodes,
+    machineSource: 'newmachine-stub-not-in-allowlist', // machineSource is only used for identity_mapping lookup key here
+  });
+  assert.equal(unmatched.length, 0);
+  assert.equal(matched[0].employee_id, 'emp-a');
+  assert.equal(matched[0].match_type, 'employee_code');
+});
+
+test('Machine ID corroboration: code match + different name never falls through to a wrong name-only match', () => {
+  // Employee B's own name ("Employee B") would legitimately name-match emp-b by Priority 3/4, but here
+  // the FILE reports code "3" (Employee A's code) with name "Employee B" — an inconsistent/reused-ID
+  // scenario. It must stay unresolved, not silently bind to either candidate.
+  const { matched, unmatched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Employee B' }],
+    dbEmployees: dbEmployeesWithCodes,
+    machineSource: 'samadikun',
+  });
+  assert.equal(matched.length, 0);
+  assert.equal(unmatched[0].reason, 'employee_code_name_mismatch');
+  assert.equal(unmatched[0].candidate_matches[0].id, 'emp-a');
+});
+
+test('Machine ID corroboration: an existing scoped identity mapping always wins over employee_code', () => {
+  const identities = [
+    { source: 'fingerprint:samadikun', external_employee_id: '3', target_type: 'employee', employee_id: 'emp-b' },
+  ];
+  const { matched } = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Whoever' }],
+    dbEmployees: dbEmployeesWithCodes,
+    existingIdentities: identities,
+    machineSource: 'samadikun',
+  });
+  assert.equal(matched[0].employee_id, 'emp-b');
+});
+
+test('Machine ID corroboration: an unresolved code/name mismatch on one machine never leaks a mapping to another', () => {
+  const samadikun = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Employee B' }],
+    dbEmployees: dbEmployeesWithCodes,
+    machineSource: 'samadikun',
+  });
+  assert.equal(samadikun.matched.length, 0);
+
+  const bypass = importer.matchEmployees({
+    fileEmployees: [{ external_employee_id: '3', external_name: 'Employee A' }],
+    dbEmployees: dbEmployeesWithCodes,
+    machineSource: 'bypass',
+  });
+  assert.equal(bypass.matched[0].employee_id, 'emp-a');
+});
+
 test('mergeAttendanceRecords: unions punches, never lets zero-punch override evidence, idempotent', () => {
   const a = { raw_punches: ['08:00', '17:00'], first_check_in: '08:00', last_check_out: '17:00', late_minutes: 0, status: 'hadir' };
   const b = { raw_punches: ['08:05', '17:30'], first_check_in: '08:05', last_check_out: '17:30', late_minutes: 5, status: 'terlambat' };

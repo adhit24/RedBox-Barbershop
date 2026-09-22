@@ -524,11 +524,15 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
     throw new Error(`Failed to query employee_attendance: ${attError.message}`);
   }
   const attOvertime = new Map(); // employee_id -> Map(date -> overtime_minutes > 0)
+  const attCompleteByEmpDate = new Map(); // employee_id -> Map(date -> both punches present)
   {
     for (const row of attendanceRows || []) {
       const s = summaryMap.get(row.employee_id);
       if (!s) continue;
       s.records_count++;
+
+      if (!attCompleteByEmpDate.has(row.employee_id)) attCompleteByEmpDate.set(row.employee_id, new Map());
+      attCompleteByEmpDate.get(row.employee_id).set(row.attendance_date, !!(row.first_check_in && row.last_check_out));
 
       // Track min and max dates
       if (!s.min_date || row.attendance_date < s.min_date) s.min_date = row.attendance_date;
@@ -595,7 +599,7 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
   // REVIEW_REQUIRED come out READY. Abort BEFORE any status is calculated / anything is written.
   const { data: excRows, error: excError } = await fetchAllRows(() => supabase
     .from('attendance_exceptions')
-    .select('raw_data, status, attendance_date')
+    .select('raw_data, status, attendance_date, exception_type')
     .eq('status', 'pending')
     .gte('attendance_date', periodStart)
     .lte('attendance_date', periodEnd)
@@ -608,9 +612,16 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
   }
   for (const exc of excRows || []) {
     const empId = exc.raw_data?.employee_id;
-    if (empId && summaryMap.has(empId)) {
-      summaryMap.get(empId).unresolved_exceptions_count++;
+    if (!empId || !summaryMap.has(empId)) continue;
+    // Defense-in-depth (PRRT_kwDOSNmW7c6kYVyo): the fingerprint importer reconciles a pending
+    // single_punch exception once the missing punch arrives, but a pending row can still reach here
+    // (e.g. a direct DB edit). Only single_punch is ever skipped, and only when the CURRENT
+    // canonical attendance row for that employee+date already has both punches; every other
+    // exception type (unmatched_employee, identity ambiguity, etc.) still counts as blocking.
+    if (exc.exception_type === 'single_punch' && attCompleteByEmpDate.get(empId)?.get(exc.attendance_date)) {
+      continue;
     }
+    summaryMap.get(empId).unresolved_exceptions_count++;
   }
 
   // 4. Finalize metrics per employee

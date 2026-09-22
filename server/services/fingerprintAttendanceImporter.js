@@ -321,18 +321,36 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
       continue;
     }
 
-    // Priority 2: Match employees.employee_code
+    // Priority 2: Match employees.employee_code, but ONLY when corroborated by an exact normalized
+    // name/nickname match to the SAME employee. A machine ID is only unique within its own machine
+    // (Bypass ID 3 != Samadikun ID 3); without a scoped identity yet, the global employee_code alone
+    // is not sufficient authority to auto-map a brand-new machine identity (PRRT_kwDOSNmW7c6kYVyh).
     const empByCode = dbEmployees.find(e => String(e.employee_code || '').trim() === extId);
     if (empByCode) {
-      matched.push({
+      const codeName = normalizeAlphanumeric(empByCode.name);
+      const codeNick = normalizeAlphanumeric(empByCode.nickname);
+      const nameCorroborates = (!!codeName && codeName === normExtName) || (!!codeNick && codeNick === normExtName);
+      if (nameCorroborates) {
+        matched.push({
+          ...fe,
+          match_type: 'employee_code',
+          target_type: 'employee',
+          employee_id: empByCode.id,
+          barber_id: null,
+          target_name: empByCode.name,
+          business_unit: empByCode.business_unit || null,
+          branch: empByCode.branch || null,
+        });
+        continue;
+      }
+      // Code matched a different name: do NOT auto-map. Route to manual review instead of falling
+      // through to a name-only match that could bind this ID to yet another employee.
+      unmatched.push({
         ...fe,
-        match_type: 'employee_code',
-        target_type: 'employee',
-        employee_id: empByCode.id,
-        barber_id: null,
-        target_name: empByCode.name,
-        business_unit: empByCode.business_unit || null,
-        branch: empByCode.branch || null,
+        reason: 'employee_code_name_mismatch',
+        candidate_matches: [{
+          type: 'employee', id: empByCode.id, name: empByCode.name, nickname: empByCode.nickname, branch: empByCode.branch,
+        }],
       });
       continue;
     }
@@ -523,7 +541,7 @@ async function readAllPages(buildQuery, { pageSize = 1000, failMessage, failCode
 function fetchExistingAttendance(supabase, employeeIds, dateFrom, dateTo, pageSize = 1000) {
   return readAllPages(() => supabase
     .from('employee_attendance')
-    .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, notes')
+    .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, overtime_minutes, notes')
     .in('employee_id', employeeIds)
     .gte('attendance_date', dateFrom)
     .lte('attendance_date', dateTo)
@@ -554,6 +572,83 @@ function fetchPendingExceptions(supabase, externalIds, dateFrom, dateTo, pageSiz
     failMessage: 'Gagal membaca exception pending untuk deduplikasi',
     failCode: 'EXISTING_EXCEPTIONS_READ_FAILED',
   });
+}
+
+/**
+ * Pending single_punch exceptions in the import period, used to reconcile stale exceptions against
+ * the current canonical attendance (PRRT_kwDOSNmW7c6kYVyo). Scoped by exception_type so unrelated
+ * pending exceptions (unmatched_employee, invalid_date, etc.) are never touched.
+ */
+function fetchPendingSinglePunchExceptions(supabase, dateFrom, dateTo, pageSize = 1000) {
+  return readAllPages(() => supabase
+    .from('attendance_exceptions')
+    .select('id, attendance_date, exception_type, raw_data, status')
+    .eq('status', 'pending')
+    .eq('exception_type', 'single_punch')
+    .gte('attendance_date', dateFrom)
+    .lte('attendance_date', dateTo)
+    .order('attendance_date')
+    .order('id'), {
+    pageSize,
+    failMessage: 'Gagal membaca exception single_punch pending untuk rekonsiliasi',
+    failCode: 'PENDING_SINGLE_PUNCH_READ_FAILED',
+  });
+}
+
+/**
+ * Reconcile stale pending `single_punch` exceptions against the CURRENT canonical attendance row
+ * (post-merge, just written to employee_attendance). A re-import that supplies the missing punch
+ * makes the original exception's premise false; leaving it pending forever blocks payroll lock with
+ * `unresolved_exceptions_count > 0` for an issue that no longer exists.
+ *
+ * Only auto-resolves when the underlying issue is objectively no longer true (the row now has >= 2
+ * punches). Never touches other exception types, still-incomplete rows, or exceptions for a
+ * different employee/date. Audit history is preserved: the row is marked 'resolved', not deleted.
+ * Best-effort: a failure here must not undo an attendance import that already succeeded.
+ */
+async function reconcileStaleSinglePunchExceptions(supabase, employeeAttendanceRows, dateFrom, dateTo) {
+  if (!employeeAttendanceRows || employeeAttendanceRows.length === 0) return 0;
+  const canonicalByKey = new Map(
+    employeeAttendanceRows.map(r => [`${r.employee_id}|${r.attendance_date}`, r])
+  );
+
+  let pending;
+  try {
+    pending = await fetchPendingSinglePunchExceptions(supabase, dateFrom, dateTo);
+  } catch (readErr) {
+    console.error('Gagal membaca exception single_punch untuk rekonsiliasi:', readErr.message);
+    return 0;
+  }
+
+  const resolvedAt = new Date().toISOString();
+  let resolvedCount = 0;
+  for (const exc of pending) {
+    const empId = exc.raw_data?.employee_id;
+    if (!empId) continue;
+    const row = canonicalByKey.get(`${empId}|${exc.attendance_date}`);
+    if (!row || (row.raw_punches || []).length < 2) continue; // still incomplete: leave pending
+
+    try {
+      const { error } = await supabase
+        .from('attendance_exceptions')
+        .update({
+          status: 'resolved',
+          resolution_notes: 'AUTO_RESOLVED_AFTER_ATTENDANCE_CORRECTION',
+          resolved_by: 'system:fingerprint_import',
+          resolved_at: resolvedAt,
+          updated_at: resolvedAt,
+        })
+        .eq('id', exc.id);
+      if (error) {
+        console.error(`Gagal merekonsiliasi exception single_punch ${exc.id}:`, error.message);
+        continue;
+      }
+      resolvedCount++;
+    } catch (writeErr) {
+      console.error(`Gagal merekonsiliasi exception single_punch ${exc.id}:`, writeErr.message);
+    }
+  }
+  return resolvedCount;
 }
 
 /**
@@ -989,6 +1084,11 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         status: merged.status || row.status,
         late_minutes: merged.late_minutes ?? row.late_minutes,
         raw_punches: merged.raw_punches || row.raw_punches,
+        // Fingerprint files never carry an authoritative overtime value (they always report 0 here);
+        // preserve whatever overtime_minutes the existing row already had (computed/approved
+        // elsewhere) instead of clobbering it with the freshly-parsed row's default 0
+        // (PRRT_kwDOSNmW7c6kYVyb). A genuinely new row (no existing DB record) legitimately starts at 0.
+        overtime_minutes: ex.overtime_minutes ?? row.overtime_minutes,
       };
     });
   }
@@ -1106,6 +1206,13 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   }
   exceptionsCount = newExceptionRows.length;
 
+  // Reconcile stale pending single_punch exceptions now that the canonical attendance rows are
+  // written (PRRT_kwDOSNmW7c6kYVyo). Runs after this batch's own exception dedup so it never
+  // interferes with that read. Best-effort: never fails an import that already succeeded.
+  if (employeeAttendanceRows.length > 0) {
+    await reconcileStaleSinglePunchExceptions(supabase, employeeAttendanceRows, period.from, period.to);
+  }
+
   const finalStatus = exceptionRows.length > 0 ? 'partial' : 'completed';
 
   await supabase
@@ -1162,6 +1269,8 @@ module.exports = {
   mergeAttendanceRecords,
   fetchExistingAttendance,
   fetchPendingExceptions,
+  fetchPendingSinglePunchExceptions,
+  reconcileStaleSinglePunchExceptions,
   buildIdentityReport,
   identitySourceFor,
   exceptionNamespaces,

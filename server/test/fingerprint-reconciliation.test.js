@@ -360,6 +360,97 @@ test('Exception dedup: lookup is bounded to the import period; rows outside are 
   assert.ok(store.attendance_exceptions.some((e) => e.exception_type === 'unmatched_employee' && e.attendance_date === '2026-08-28'));
 });
 
+// ---- PRRT_kwDOSNmW7c6kYVyb: fingerprint files are never authoritative for overtime_minutes ----
+
+test('Overtime preservation: fingerprint re-import never resets an existing overtime_minutes value', async () => {
+  const store = seedStore();
+  store.employee_attendance.push({
+    id: 'seed-ot', employee_id: AGUS, attendance_date: '2026-08-26', first_check_in: '08:00', last_check_out: '17:00',
+    status: 'hadir', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['08:00', '17:00'], overtime_minutes: 90, source: 'fingerprint',
+  });
+  await commit(store);
+  const d26 = rowsOf(store, AGUS).find(r => r.attendance_date === '2026-08-26');
+  assert.equal(d26.overtime_minutes, 90);
+});
+
+test('Overtime preservation: existing overtime_minutes survives even when the re-import supplies a missing punch', async () => {
+  const store = seedStore();
+  store.employee_attendance.push({
+    id: 'seed-ot2', employee_id: AGUS, attendance_date: '2026-08-26', first_check_in: '08:00', last_check_out: null,
+    status: 'incomplete', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['08:00'], overtime_minutes: 60, source: 'fingerprint',
+  });
+  await commit(store); // day index 0 in the file already has both punches
+  const d26 = rowsOf(store, AGUS).find(r => r.attendance_date === '2026-08-26');
+  assert.deepEqual(d26.raw_punches, ['08:00', '17:00']);
+  assert.equal(d26.overtime_minutes, 60);
+});
+
+test('Overtime preservation: a genuinely new attendance row (no prior DB record) still defaults overtime_minutes to 0', async () => {
+  const store = seedStore();
+  await commit(store);
+  const d26 = rowsOf(store, AGUS).find(r => r.attendance_date === '2026-08-26');
+  assert.equal(d26.overtime_minutes, 0);
+});
+
+test('Overtime preservation: idempotent re-import of an unchanged day does not disturb overtime_minutes', async () => {
+  const store = seedStore();
+  await commit(store);
+  const before = rowsOf(store, AGUS).find(r => r.attendance_date === '2026-08-26').overtime_minutes;
+  await commit(store); // second identical import
+  const after = rowsOf(store, AGUS).find(r => r.attendance_date === '2026-08-26').overtime_minutes;
+  assert.equal(after, before);
+});
+
+// ---- PRRT_kwDOSNmW7c6kYVyo: stale single_punch exceptions must be reconciled against current attendance ----
+
+test('Stale single_punch reconciliation: exception is auto-resolved once a later import supplies the missing punch', async () => {
+  const store = seedStore();
+  const single = [{ id: '1', name: 'Agus', dept: 'ADMIN', punchesByDayIndex: { 0: ['08:00'] } }];
+  await importer.commitImport({ buffer: buildWorkbookBuffer(single), filename: 'r1.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass' });
+  const before = store.attendance_exceptions.find(e => e.exception_type === 'single_punch' && e.raw_data.employee_id === AGUS);
+  assert.ok(before, 'single_punch exception must be created on first import');
+  assert.equal(before.status, 'pending');
+
+  const complete = [{ id: '1', name: 'Agus', dept: 'ADMIN', punchesByDayIndex: { 0: ['08:00', '17:00'] } }];
+  await importer.commitImport({ buffer: buildWorkbookBuffer(complete), filename: 'r2.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass' });
+
+  const after = store.attendance_exceptions.find(e => e.id === before.id);
+  assert.equal(after.status, 'resolved');
+  assert.equal(after.resolution_notes, 'AUTO_RESOLVED_AFTER_ATTENDANCE_CORRECTION');
+  assert.equal(after.resolved_by, 'system:fingerprint_import');
+  assert.ok(after.resolved_at);
+});
+
+test('Stale single_punch reconciliation: still-single-punch on re-import stays pending', async () => {
+  const store = seedStore();
+  const single = [{ id: '1', name: 'Agus', dept: 'ADMIN', punchesByDayIndex: { 0: ['08:00'] } }];
+  await importer.commitImport({ buffer: buildWorkbookBuffer(single), filename: 'r1.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass' });
+  await importer.commitImport({ buffer: buildWorkbookBuffer(single), filename: 'r2.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass' });
+  const exc = store.attendance_exceptions.find(e => e.exception_type === 'single_punch');
+  assert.equal(exc.status, 'pending');
+});
+
+test('Stale single_punch reconciliation: an unrelated pending exception (unmatched_employee) is never auto-resolved', async () => {
+  const store = seedStore();
+  await commit(store); // Ghost (id 4) creates an unmatched_employee exception
+  const before = store.attendance_exceptions.find(e => e.exception_type === 'unmatched_employee');
+  assert.ok(before);
+  assert.equal(before.status, 'pending');
+  await commit(store);
+  const after = store.attendance_exceptions.find(e => e.id === before.id);
+  assert.equal(after.status, 'pending');
+});
+
+test('Stale single_punch reconciliation: historical exception row is kept for audit, not deleted', async () => {
+  const store = seedStore();
+  const single = [{ id: '1', name: 'Agus', dept: 'ADMIN', punchesByDayIndex: { 0: ['08:00'] } }];
+  await importer.commitImport({ buffer: buildWorkbookBuffer(single), filename: 'r1.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass' });
+  const before = store.attendance_exceptions.length;
+  const complete = [{ id: '1', name: 'Agus', dept: 'ADMIN', punchesByDayIndex: { 0: ['08:00', '17:00'] } }];
+  await importer.commitImport({ buffer: buildWorkbookBuffer(complete), filename: 'r2.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass' });
+  assert.equal(store.attendance_exceptions.length, before, 'row count unchanged: resolved in place, not deleted');
+});
+
 test('Exception dedup: a failed pending-exception read aborts instead of treating it as empty', async () => {
   const failing = { from: () => ({
     select() { return this; }, eq() { return this; }, in() { return this; }, gte() { return this; }, lte() { return this; }, order() { return this; },

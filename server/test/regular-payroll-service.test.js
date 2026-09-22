@@ -1034,3 +1034,41 @@ test('Approval paging: a failed approvals/attendance read fails closed instead o
   await assert.rejects(() => fetchEmployeeAttendanceSummaries(failing('employee_overtime_approvals'), ['e1'], '2026-08-26', '2026-09-25', new Map()), /employee_overtime_approvals/);
   await assert.rejects(() => fetchEmployeeAttendanceSummaries(failing('employee_attendance'), ['e1'], '2026-08-26', '2026-09-25', new Map()), /employee_attendance/);
 });
+
+// ---- PRRT_kwDOSNmW7c6kYVyo: stale single_punch exceptions must not block payroll once attendance is complete ----
+
+test('Stale single_punch exception: attendance corrected (both punches present) -> no longer counted as unresolved', async () => {
+  const attendance = [
+    { employee_id: 'e1', attendance_date: '2026-09-01', status: 'hadir', overtime_minutes: 0, first_check_in: '08:00', last_check_out: '17:00' },
+  ];
+  const exceptions = [
+    { id: 'exc-1', status: 'pending', exception_type: 'single_punch', attendance_date: '2026-09-01', raw_data: { employee_id: 'e1' } },
+  ];
+  const sb = cappedSupabase({ employee_attendance: attendance, employee_overtime_approvals: [], attendance_exceptions: exceptions });
+  const map = await fetchEmployeeAttendanceSummaries(sb, ['e1'], '2026-08-26', '2026-09-25', new Map());
+  assert.equal(map.get('e1').unresolved_exceptions_count, 0);
+});
+
+test('Stale single_punch exception: still-incomplete attendance keeps counting as unresolved', async () => {
+  const attendance = [
+    { employee_id: 'e1', attendance_date: '2026-09-01', status: 'incomplete', overtime_minutes: 0, first_check_in: '08:00', last_check_out: null },
+  ];
+  const exceptions = [
+    { id: 'exc-1', status: 'pending', exception_type: 'single_punch', attendance_date: '2026-09-01', raw_data: { employee_id: 'e1' } },
+  ];
+  const sb = cappedSupabase({ employee_attendance: attendance, employee_overtime_approvals: [], attendance_exceptions: exceptions });
+  const map = await fetchEmployeeAttendanceSummaries(sb, ['e1'], '2026-08-26', '2026-09-25', new Map());
+  assert.equal(map.get('e1').unresolved_exceptions_count, 1);
+});
+
+test('Stale single_punch exception: unrelated exception types still block even with complete attendance', async () => {
+  const attendance = [
+    { employee_id: 'e1', attendance_date: '2026-09-01', status: 'hadir', overtime_minutes: 0, first_check_in: '08:00', last_check_out: '17:00' },
+  ];
+  const exceptions = [
+    { id: 'exc-1', status: 'pending', exception_type: 'unmatched_employee', attendance_date: '2026-09-01', raw_data: { employee_id: 'e1' } },
+  ];
+  const sb = cappedSupabase({ employee_attendance: attendance, employee_overtime_approvals: [], attendance_exceptions: exceptions });
+  const map = await fetchEmployeeAttendanceSummaries(sb, ['e1'], '2026-08-26', '2026-09-25', new Map());
+  assert.equal(map.get('e1').unresolved_exceptions_count, 1);
+});
