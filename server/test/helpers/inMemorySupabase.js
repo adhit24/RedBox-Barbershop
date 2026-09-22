@@ -8,7 +8,7 @@
  *  - insert / update().eq().select().single() / delete().eq()
  *  - failures can be injected: opts.failOn = { 'table.insert' | 'table.update' | 'table.delete' | 'table.select': message }
  */
-const { emulateCreateRegularPayrollRun } = require('./regularPayrollRpc');
+const { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems } = require('./regularPayrollRpc');
 
 function createInMemorySupabase(store, opts = {}) {
   const failOn = opts.failOn || {};
@@ -100,9 +100,14 @@ function createInMemorySupabase(store, opts = {}) {
       select(cols) { joinEmployees = name === 'employee_overtime_approvals' && /employees\s*\(/.test(String(cols || '')); return api; },
       eq(c, v) { filters.push((r) => r[c] === v); return api; },
       neq(c, v) { filters.push((r) => r[c] !== v); return api; },
-      or(expr) { // "col.eq.X,col.eq.Y"
-        const parts = String(expr).split(',').map((x) => x.split('.eq.'));
-        filters.push((r) => parts.some(([c, v]) => String(r[c]) === v));
+      or(expr) { // "col.eq.X,col.eq.Y" and/or "col.is.null"
+        const parts = String(expr).split(',').map((x) => {
+          const nullMatch = x.match(/^(.+)\.is\.null$/);
+          if (nullMatch) return { col: nullMatch[1], isNull: true };
+          const [c, v] = x.split('.eq.');
+          return { col: c, val: v };
+        });
+        filters.push((r) => parts.some((p) => (p.isNull ? (r[p.col] === null || r[p.col] === undefined) : String(r[p.col]) === p.val)));
         return api;
       },
       in(c, v) { (api.__in = api.__in || {})[c] = v; filters.push((r) => v.includes(r[c])); return api; },
@@ -183,6 +188,10 @@ function createInMemorySupabase(store, opts = {}) {
             filters.push((r) => r[c] === val);
             return builder;
           },
+          neq(c, val) {
+            filters.push((r) => r[c] !== val);
+            return builder;
+          },
           select() {
             return builder;
           },
@@ -236,11 +245,31 @@ function createInMemorySupabase(store, opts = {}) {
           failItemInsert: failOn['payroll_regular_items.insert'] || null,
         }));
       }
+      if (fn === 'add_regular_payroll_run_items') {
+        return Promise.resolve(emulateAddRegularPayrollRunItems(store, args, { idFactory: () => `n${seq++}` }));
+      }
       if (fn === 'lock_payroll_run') {
         // The invariants live in the SQL (asserted statically) and in the service-side mirror; here only the state change
         const runRow = (store.payroll_runs || []).find((r) => r.id === args.p_run_id);
         if (!runRow) return Promise.resolve({ data: null, error: { message: `Payroll run ${args.p_run_id} not found` } });
         if (runRow.status !== 'DRAFT') return Promise.resolve({ data: null, error: { message: `Cannot lock payroll run: current status is ${runRow.status}` } });
+        // Population completeness backstop (P1-2, PRRT_kwDOSNmW7c6kkm1X): every employee CURRENTLY
+        // eligible for this run's business unit/period must already have an item.
+        if (['REGULAR', 'REGULAR_PAYROLL'].includes(runRow.payroll_type)) {
+          const itemEmployeeIds = new Set((store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).map((i) => i.employee_id));
+          const missingEligible = (store.employees || []).filter((e) =>
+            e.is_active === true &&
+            (e.employment_type == null || e.employment_type === 'regular') &&
+            (!e.join_date || e.join_date <= runRow.period_end) &&
+            (runRow.business_unit === 'ALL' || e.business_unit === runRow.business_unit) &&
+            !itemEmployeeIds.has(e.id));
+          if (missingEligible.length > 0) {
+            return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${missingEligible.length} eligible employee(s) are missing from the payroll run. Recalculate to reconcile the population first.` } });
+          }
+        }
+        // lock invariant: an item flagged no-longer-eligible (population_changed) cannot be locked
+        const populationChangedItem = (store.payroll_regular_items || []).find((i) => i.payroll_run_id === runRow.id && i.attendance_summary?.population_changed === true);
+        if (populationChangedItem) return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: employee ${populationChangedItem.employee_name_snapshot} is no longer eligible for this run (EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN). Resolve before locking.` } });
         // lock invariant: a DRAFT item whose attendance changed after calculation cannot be locked (dirty OR revision mismatch)
         const dirtyItem = (store.payroll_regular_items || []).find((i) =>
           i.payroll_run_id === runRow.id && (

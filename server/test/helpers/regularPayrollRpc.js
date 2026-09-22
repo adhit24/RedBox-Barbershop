@@ -81,4 +81,70 @@ function emulateCreateRegularPayrollRun(store, args, { idFactory, failItemInsert
   return { data: { run_id: runId, items_count: itemsIn.length, status: 'DRAFT' }, error: null };
 }
 
-module.exports = { emulateCreateRegularPayrollRun };
+/**
+ * JS emulation of public.add_regular_payroll_run_items(p_run_id, p_items) for test doubles.
+ * Mirrors the SQL (20260922000000_regular_payroll_population_reconciliation.sql): DRAFT-only,
+ * per-employee duplicate rejection, the same source-revision concurrency guard as
+ * create_regular_payroll_run, and a server-side eligibility re-check (is_active, employment_type
+ * = 'regular', join_date <= period_end, matching business unit) independent of the caller's snapshot.
+ */
+function emulateAddRegularPayrollRunItems(store, args, { idFactory = () => `n${Math.random().toString(36).slice(2, 10)}` } = {}) {
+  const runId = args?.p_run_id;
+  const itemsIn = args?.p_items;
+  if (!Array.isArray(itemsIn) || itemsIn.length === 0) {
+    return { data: { run_id: runId, items_count: 0, status: 'NOOP' }, error: null };
+  }
+  store.payroll_runs = store.payroll_runs || [];
+  store.payroll_regular_items = store.payroll_regular_items || [];
+  store.employees = store.employees || [];
+  const run = store.payroll_runs.find((r) => r.id === runId);
+  if (!run) {
+    return { data: null, error: { message: `Payroll run ${runId} not found` } };
+  }
+  if (run.status !== 'DRAFT') {
+    return { data: null, error: { message: `Cannot add items to payroll run ${runId}: status is ${run.status} (only DRAFT can be modified)` } };
+  }
+
+  for (const it of itemsIn) {
+    const alreadyPresent = store.payroll_regular_items.some((i) => i.payroll_run_id === runId && i.employee_id === it.employee_id);
+    if (alreadyPresent) {
+      return { data: null, error: { message: `EMPLOYEE_ALREADY_IN_RUN: employee ${it.employee_id} already has a payroll item in run ${runId}` } };
+    }
+
+    const rec = (store.payroll_attendance_source_versions || []).find((v) => v.employee_id === it.employee_id);
+    const currVer = Number(rec?.source_revision || 0);
+    const expectedVer = Number(it.attendance_source_revision || 0);
+    if (currVer !== expectedVer) {
+      return {
+        data: null,
+        error: { message: `PAYROLL_INPUT_CHANGED_DURING_POPULATION_RECONCILIATION: attendance source changed for employee ${it.employee_id} (expected ${expectedVer}, current ${currVer})` },
+      };
+    }
+
+    const emp = store.employees.find((e) => e.id === it.employee_id);
+    const empEligible = !!emp && emp.is_active === true &&
+      (emp.employment_type == null || emp.employment_type === 'regular') &&
+      (!emp.join_date || emp.join_date <= run.period_end) &&
+      (run.business_unit === 'ALL' || emp.business_unit === run.business_unit);
+    if (!empEligible) {
+      return { data: null, error: { message: `EMPLOYEE_NOT_ELIGIBLE_FOR_POPULATION_RECONCILIATION: employee ${it.employee_id} is not currently eligible for run ${runId}` } };
+    }
+  }
+
+  for (const it of itemsIn) {
+    store.payroll_regular_items.push({
+      id: idFactory(),
+      payroll_run_id: runId,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      attendance_source_revision: Number(it.attendance_source_revision || 0),
+      attendance_snapshot_revision: Number(it.attendance_snapshot_revision || 0),
+      payroll_input_revision: Number(it.payroll_input_revision || 0),
+      payroll_snapshot_revision: Number(it.payroll_snapshot_revision || 0),
+      ...it,
+    });
+  }
+  return { data: { run_id: runId, items_count: itemsIn.length, status: 'DRAFT' }, error: null };
+}
+
+module.exports = { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems };

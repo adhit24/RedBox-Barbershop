@@ -58,8 +58,10 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   assert.ok(versionSnapshot, 'version attendance snapshot migration exists');
   const generalizeConcurrency = list.find((f) => /generalize_payroll_snapshot_concurrency/.test(f));
   assert.ok(generalizeConcurrency, 'generalize concurrency migration exists');
+  const populationReconciliation = list.find((f) => /population_reconciliation/.test(f));
+  assert.ok(populationReconciliation, 'population reconciliation migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /generalize_payroll_snapshot_concurrency/);
+  assert.match(last, /population_reconciliation/);
   assert.ok(
     restore > '20260919143000' &&
       pendingGuard > restore &&
@@ -68,8 +70,9 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
       syncDirty > lifecycle &&
       blockReview > syncDirty &&
       versionSnapshot > blockReview &&
-      generalizeConcurrency > versionSnapshot,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot < generalize concurrency'
+      generalizeConcurrency > versionSnapshot &&
+      populationReconciliation > generalizeConcurrency,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot < generalize concurrency < population reconciliation'
   );
 });
 

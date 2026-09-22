@@ -662,11 +662,19 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
 
 /**
  * Shared population rule for Regular Payroll:
- * Active employees whose join_date is null OR join_date <= periodEnd.
- * HR master employee data remains the sole authority.
+ * Active, employment_type = 'regular' employees whose join_date is null OR join_date <= periodEnd.
+ * HR master employee data remains the sole authority. `employees.employment_type` is never inferred
+ * from position, branch, attendance source, or a barber/compensation record (PRRT_kwDOSNmW7c6kkm1V) --
+ * a commission-based/barber-style row living in `employees` must never enter Regular Payroll.
+ *
+ * `employment_type` defaults to 'regular' at the schema level (employees.employment_type DEFAULT
+ * 'regular'), so a row that omits the field is regular by definition; only an EXPLICIT non-'regular'
+ * value excludes it. The DB query below also filters `employment_type = 'regular' OR IS NULL` so the
+ * exclusion happens at the source, not only in this JS backstop.
  */
 function isEmployeeEligibleForPeriod(employee, periodEnd) {
   if (!employee || employee.is_active === false) return false;
+  if (employee.employment_type && employee.employment_type !== 'regular') return false;
   if (!employee.join_date) return true; // join_date IS NULL -> included
   if (!periodEnd) return true;
   return employee.join_date <= periodEnd;
@@ -675,9 +683,15 @@ function isEmployeeEligibleForPeriod(employee, periodEnd) {
 async function fetchEligibleRegularEmployees(supabase, { businessUnit = 'ALL', periodEnd }) {
   let empQuery = supabase
     .from('employees')
-    .select('id, name, nickname, business_unit, branch, branch_name, position, base_salary, position_allowance, meal_allowance_rate, is_active, join_date')
+    .select('id, name, nickname, business_unit, branch, branch_name, position, base_salary, position_allowance, meal_allowance_rate, is_active, join_date, employment_type')
     .eq('is_active', true)
     .order('name');
+
+  // DB-side authority for the population rule (a commission-based/barber-style `employees` row must
+  // never enter Regular Payroll): employment_type = 'regular', or unset (schema DEFAULT is 'regular').
+  if (typeof empQuery.or === 'function') {
+    empQuery = empQuery.or('employment_type.eq.regular,employment_type.is.null');
+  }
 
   if (businessUnit && businessUnit !== 'ALL') {
     empQuery = empQuery.eq('business_unit', businessUnit);
@@ -686,6 +700,8 @@ async function fetchEligibleRegularEmployees(supabase, { businessUnit = 'ALL', p
   const { data: allActive, error: empErr } = await empQuery;
   if (empErr) throw new Error(`Failed to load employees: ${empErr.message}`);
 
+  // JS-side backstop (isEmployeeEligibleForPeriod) applies the identical rule again, so a test double
+  // or a future caller that cannot express the OR clause never silently admits a non-regular employee.
   const eligible = (allActive || []).filter((e) => isEmployeeEligibleForPeriod(e, periodEnd));
   return eligible;
 }
@@ -705,6 +721,134 @@ async function fetchAttendanceSourceVersions(supabase, employeeIds) {
   } catch (_e) {
     return new Map();
   }
+}
+
+const DEFAULT_ATTENDANCE_SUMMARY = Object.freeze({
+  present_days: 0,
+  absent_days: 0,
+  late_count: 0,
+  late_minutes: 0,
+  overtime_hours: 0,
+  candidate_overtime_minutes: 0,
+  approved_overtime_minutes: 0,
+  pending_overtime_count: 0,
+  incomplete_attendance: 0,
+  records_count: 0,
+  unresolved_exceptions_count: 0,
+  min_date: null,
+  max_date: null,
+  attendance_period_available: 'Belum tersedia',
+  attendance_coverage_days: 0,
+  attendance_coverage_status: 'NO_ATTENDANCE',
+});
+
+/**
+ * Build one calculated payroll item for one employee, through the SAME authoritative calculation path
+ * used by draft generation. Shared by generateRegularPayrollDraft and reconcileRegularPayrollPopulation
+ * (P1-2, PRRT_kwDOSNmW7c6kkm1X) so a late-eligible employee is never calculated through a second,
+ * duplicated code path.
+ */
+function buildRegularPayrollCalculatedItem({ employee, periodStart, periodEnd, attendanceMap, sourceVersions, itemOverrides = {} }) {
+  const attSummary = attendanceMap.get(employee.id) || {
+    ...DEFAULT_ATTENDANCE_SUMMARY,
+    attendance_period_expected: `${periodStart} s/d ${periodEnd}`,
+  };
+
+  const override = itemOverrides[employee.id] || {};
+
+  const itemResult = calculateRegularPayrollItem({
+    employee,
+    period: { period_start: periodStart, period_end: periodEnd },
+    attendanceSummary: attSummary,
+    allowances: {
+      meal_allowance_days: override.meal_allowance_days,
+      meal_allowance_rate: override.meal_allowance_rate,
+      position_allowance: override.position_allowance,
+      attendance_allowance: override.attendance_allowance,
+    },
+    variables: {
+      product_commission: override.product_commission,
+      product_commission_source: override.product_commission_source,
+      service_barber_amount: override.service_barber_amount,
+      service_barber_source: override.service_barber_source,
+      approved_overtime_hours: override.approved_overtime_hours,
+    },
+    lateDeductionOverride: override.late_deduction,
+    adjustments: override.adjustments || [],
+  });
+
+  const empSourceVer = sourceVersions.get(employee.id) || 0;
+  itemResult.attendance_source_revision = empSourceVer;
+  itemResult.attendance_snapshot_revision = empSourceVer;
+  itemResult.payroll_input_revision = 0;
+  itemResult.payroll_snapshot_revision = 0;
+
+  return itemResult;
+}
+
+/**
+ * Map a calculated item (buildRegularPayrollCalculatedItem output) to a payroll_regular_items insert
+ * row. Shared by generateRegularPayrollDraft (create_regular_payroll_run) and
+ * reconcileRegularPayrollPopulation (add_regular_payroll_run_items).
+ */
+function toRegularPayrollItemRow(item) {
+  return {
+    employee_id: item.employee_id,
+    employee_name_snapshot: item.employee_name_snapshot,
+    employee_nickname_snapshot: item.employee_nickname_snapshot,
+    business_unit_snapshot: item.business_unit_snapshot,
+    position_snapshot: item.position_snapshot,
+    branch_snapshot: item.branch_snapshot,
+
+    base_salary: item.base_salary,
+    daily_salary: item.daily_salary,
+    salary_divisor: item.salary_divisor,
+    work_days: item.work_days,
+    actual_salary: item.actual_salary,
+
+    meal_allowance_days: item.meal_allowance_days,
+    meal_allowance_rate: item.meal_allowance_rate,
+    meal_allowance_total: item.meal_allowance_total,
+
+    position_allowance: item.position_allowance,
+    attendance_allowance: item.attendance_allowance,
+    attendance_allowance_source: item.attendance_allowance_source,
+
+    product_commission: item.product_commission,
+    product_commission_source: item.product_commission_source,
+    service_barber_amount: item.service_barber_amount,
+    service_barber_source: item.service_barber_source,
+    overtime_hours: item.overtime_hours,
+    overtime_rate: item.overtime_rate,
+    overtime_amount: item.overtime_amount,
+
+    late_count: item.late_count,
+    late_penalty_rate: item.late_penalty_rate,
+    late_deduction: item.late_deduction,
+    late_deduction_source: item.late_deduction_source,
+    debt_deduction: item.debt_deduction,
+    manual_deduction: item.manual_deduction,
+
+    manual_bonus: item.manual_bonus,
+    adjustments_total: item.adjustments_total,
+
+    gross_pay: item.gross_pay,
+    total_deduction: item.total_deduction,
+    take_home_pay: item.take_home_pay,
+
+    attendance_period_expected: item.attendance_period_expected,
+    attendance_period_available: item.attendance_period_available,
+    attendance_coverage_days: item.attendance_coverage_days,
+    attendance_coverage_status: item.attendance_coverage_status,
+
+    attendance_summary: item.attendance_summary,
+    warnings: item.warnings,
+    status: item.status,
+    attendance_source_revision: item.attendance_source_revision ?? 0,
+    attendance_snapshot_revision: item.attendance_snapshot_revision ?? 0,
+    payroll_input_revision: item.payroll_input_revision ?? 0,
+    payroll_snapshot_revision: item.payroll_snapshot_revision ?? 0,
+  };
 }
 
 /**
@@ -776,54 +920,14 @@ async function generateRegularPayrollDraft(supabase, {
   let missingAttendanceCount = 0;
 
   for (const emp of employees) {
-    const attSummary = attendanceMap.get(emp.id) || {
-      present_days: 0,
-      absent_days: 0,
-      late_count: 0,
-      late_minutes: 0,
-      overtime_hours: 0,
-      candidate_overtime_minutes: 0,
-      approved_overtime_minutes: 0,
-      pending_overtime_count: 0,
-      incomplete_attendance: 0,
-      records_count: 0,
-      unresolved_exceptions_count: 0,
-      min_date: null,
-      max_date: null,
-      attendance_period_expected: `${periodStart} s/d ${periodEnd}`,
-      attendance_period_available: 'Belum tersedia',
-      attendance_coverage_days: 0,
-      attendance_coverage_status: 'NO_ATTENDANCE',
-    };
-
-    const override = itemOverrides[emp.id] || {};
-
-    const itemResult = calculateRegularPayrollItem({
+    const itemResult = buildRegularPayrollCalculatedItem({
       employee: emp,
-      period: { period_start: periodStart, period_end: periodEnd },
-      attendanceSummary: attSummary,
-      allowances: {
-        meal_allowance_days: override.meal_allowance_days,
-        meal_allowance_rate: override.meal_allowance_rate,
-        position_allowance: override.position_allowance,
-        attendance_allowance: override.attendance_allowance,
-      },
-      variables: {
-        product_commission: override.product_commission,
-        product_commission_source: override.product_commission_source,
-        service_barber_amount: override.service_barber_amount,
-        service_barber_source: override.service_barber_source,
-        approved_overtime_hours: override.approved_overtime_hours,
-      },
-      lateDeductionOverride: override.late_deduction,
-      adjustments: override.adjustments || [],
+      periodStart,
+      periodEnd,
+      attendanceMap,
+      sourceVersions,
+      itemOverrides,
     });
-
-    const empSourceVer = sourceVersions.get(emp.id) || 0;
-    itemResult.attendance_source_revision = empSourceVer;
-    itemResult.attendance_snapshot_revision = empSourceVer;
-    itemResult.payroll_input_revision = 0;
-    itemResult.payroll_snapshot_revision = 0;
 
     totalGross += itemResult.gross_pay;
     totalDeductions += itemResult.total_deduction;
@@ -856,63 +960,7 @@ async function generateRegularPayrollDraft(supabase, {
   // 6. Header + items in ONE database transaction (create_regular_payroll_run): the run becomes visible
   // only when every item is stored, and any failure (including an overlapping run created concurrently)
   // rolls the header back. No visible partial / empty DRAFT can be locked.
-  const itemsPayload = calculatedItems.map(item => ({
-    employee_id: item.employee_id,
-    employee_name_snapshot: item.employee_name_snapshot,
-    employee_nickname_snapshot: item.employee_nickname_snapshot,
-    business_unit_snapshot: item.business_unit_snapshot,
-    position_snapshot: item.position_snapshot,
-    branch_snapshot: item.branch_snapshot,
-
-    base_salary: item.base_salary,
-    daily_salary: item.daily_salary,
-    salary_divisor: item.salary_divisor,
-    work_days: item.work_days,
-    actual_salary: item.actual_salary,
-
-    meal_allowance_days: item.meal_allowance_days,
-    meal_allowance_rate: item.meal_allowance_rate,
-    meal_allowance_total: item.meal_allowance_total,
-
-    position_allowance: item.position_allowance,
-    attendance_allowance: item.attendance_allowance,
-    attendance_allowance_source: item.attendance_allowance_source,
-
-    product_commission: item.product_commission,
-    product_commission_source: item.product_commission_source,
-    service_barber_amount: item.service_barber_amount,
-    service_barber_source: item.service_barber_source,
-    overtime_hours: item.overtime_hours,
-    overtime_rate: item.overtime_rate,
-    overtime_amount: item.overtime_amount,
-
-    late_count: item.late_count,
-    late_penalty_rate: item.late_penalty_rate,
-    late_deduction: item.late_deduction,
-    late_deduction_source: item.late_deduction_source,
-    debt_deduction: item.debt_deduction,
-    manual_deduction: item.manual_deduction,
-
-    manual_bonus: item.manual_bonus,
-    adjustments_total: item.adjustments_total,
-
-    gross_pay: item.gross_pay,
-    total_deduction: item.total_deduction,
-    take_home_pay: item.take_home_pay,
-
-    attendance_period_expected: item.attendance_period_expected,
-    attendance_period_available: item.attendance_period_available,
-    attendance_coverage_days: item.attendance_coverage_days,
-    attendance_coverage_status: item.attendance_coverage_status,
-
-    attendance_summary: item.attendance_summary,
-    warnings: item.warnings,
-    status: item.status,
-    attendance_source_revision: item.attendance_source_revision ?? 0,
-    attendance_snapshot_revision: item.attendance_snapshot_revision ?? 0,
-    payroll_input_revision: item.payroll_input_revision ?? 0,
-    payroll_snapshot_revision: item.payroll_snapshot_revision ?? 0,
-  }));
+  const itemsPayload = calculatedItems.map(toRegularPayrollItemRow);
 
   const { data: created, error: createErr } = await supabase.rpc('create_regular_payroll_run', {
     p_header: {
@@ -1400,6 +1448,133 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
 }
 
 /**
+ * Reconcile a DRAFT regular payroll run's item population against the CURRENT authoritative eligible
+ * employee population (P1-2, PRRT_kwDOSNmW7c6kkm1X). Never touches a LOCKED run or a non-REGULAR run.
+ *
+ * - An employee who is eligible now but has no item (new hire, activation, employment_type corrected
+ *   to 'regular' after the draft was generated) gets one, built through the SAME calculation path as
+ *   generation (buildRegularPayrollCalculatedItem), inserted via add_regular_payroll_run_items under
+ *   the same advisory-lock + source-revision concurrency guard as create_regular_payroll_run. If the
+ *   source changed mid-reconciliation the RPC rejects and this function retries once from fresh state.
+ * - An employee whose existing item is no longer eligible (deactivated, employment_type changed away
+ *   from 'regular', join_date corrected) is NEVER silently deleted: the item is flagged
+ *   REVIEW_REQUIRED with attendance_summary.population_changed = true /
+ *   population_change_reason = 'EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN', which blocks lock (Node guard in
+ *   lockRegularPayrollRun and the authoritative DB backstop in lock_payroll_run) until a human resolves it.
+ */
+async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries = 1 } = {}) {
+  const { data: run, error: runErr } = await supabase
+    .from('payroll_runs')
+    .select('id, status, payroll_type, business_unit, period_start, period_end')
+    .eq('id', runId)
+    .single();
+  if (runErr || !run) {
+    const err = new Error(`Failed to read payroll run ${runId}: ${runErr?.message || 'not found'}`);
+    err.code = 'RUN_READ_FAILED';
+    throw err;
+  }
+  if (run.payroll_type !== 'REGULAR' && run.payroll_type !== 'REGULAR_PAYROLL') {
+    return { inserted: [], flagged_no_longer_eligible: [] }; // Barber payroll is unaffected
+  }
+  if (run.status !== 'DRAFT') {
+    return { inserted: [], flagged_no_longer_eligible: [] }; // never touches a LOCKED run
+  }
+
+  // 1. Authoritative eligible population NOW.
+  const eligible = await fetchEligibleRegularEmployees(supabase, { businessUnit: run.business_unit, periodEnd: run.period_end });
+  const eligibleMap = new Map(eligible.map((e) => [e.id, e]));
+
+  // 2. Existing items' employee population.
+  const { data: existingItems, error: itemsErr } = await fetchAllRows(() => supabase
+    .from('payroll_regular_items')
+    .select('id, employee_id, status, attendance_summary, warnings')
+    .eq('payroll_run_id', runId)
+    .order('id'));
+  if (itemsErr) {
+    const err = new Error(`Failed to read payroll items for run ${runId}: ${itemsErr.message}`);
+    err.code = 'ITEMS_READ_FAILED';
+    throw err;
+  }
+  const existingByEmployee = new Map((existingItems || []).map((i) => [i.employee_id, i]));
+
+  // 3. Missing eligible employees -> build + insert through the same authoritative calculation path.
+  const missingEmployees = eligible.filter((e) => !existingByEmployee.has(e.id));
+  const inserted = [];
+  if (missingEmployees.length > 0) {
+    const employeeIds = missingEmployees.map((e) => e.id);
+    const employeeMap = new Map(missingEmployees.map((e) => [e.id, e]));
+    const sourceVersions = await fetchAttendanceSourceVersions(supabase, employeeIds);
+    const overtimeReconciliation = await reconcileOvertimeForPeriod(supabase, {
+      periodStart: run.period_start,
+      periodEnd: run.period_end,
+      employeeIds,
+    });
+    if (firstReconciliationError(overtimeReconciliation)) {
+      throw new Error(`Overtime reconciliation failed: ${firstReconciliationError(overtimeReconciliation)}`);
+    }
+    const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, run.period_start, run.period_end, employeeMap);
+
+    const itemsPayload = missingEmployees.map((emp) => toRegularPayrollItemRow(
+      buildRegularPayrollCalculatedItem({
+        employee: emp,
+        periodStart: run.period_start,
+        periodEnd: run.period_end,
+        attendanceMap,
+        sourceVersions,
+      })
+    ));
+
+    const { data: addResult, error: addErr } = await supabase.rpc('add_regular_payroll_run_items', {
+      p_run_id: runId,
+      p_items: itemsPayload,
+    });
+
+    if (addErr || !addResult) {
+      if (/PAYROLL_INPUT_CHANGED_DURING_POPULATION_RECONCILIATION|EMPLOYEE_ALREADY_IN_RUN/i.test(addErr?.message || '') && maxRetries > 0) {
+        return reconcileRegularPayrollPopulation(supabase, runId, { maxRetries: maxRetries - 1 });
+      }
+      const err = new Error(`Failed to add missing employees to payroll run ${runId}: ${addErr?.message || 'no result'}`);
+      err.code = 'POPULATION_RECONCILIATION_FAILED';
+      throw err;
+    }
+    inserted.push(...employeeIds);
+  }
+
+  // 4. Existing items whose employee is no longer eligible -> flag, never delete.
+  const flagged = [];
+  for (const item of existingItems || []) {
+    if (item.status === 'LOCKED') continue; // never touch a frozen item
+    if (eligibleMap.has(item.employee_id)) continue;
+    if (item.attendance_summary?.population_changed === true) continue; // already flagged
+
+    const warningMsg = 'Karyawan tidak lagi memenuhi syarat untuk payroll run ini (EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN). Tinjau sebelum melanjutkan.';
+    const nextWarnings = Array.isArray(item.warnings) ? [...item.warnings, warningMsg] : [warningMsg];
+    const { error: flagErr } = await supabase
+      .from('payroll_regular_items')
+      .update({
+        status: 'REVIEW_REQUIRED',
+        warnings: nextWarnings,
+        attendance_summary: {
+          ...(item.attendance_summary || {}),
+          population_changed: true,
+          population_change_reason: 'EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN',
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', item.id)
+      .neq('status', 'LOCKED');
+    if (flagErr) {
+      const err = new Error(`Failed to flag no-longer-eligible payroll item ${item.id}: ${flagErr.message}`);
+      err.code = 'POPULATION_FLAG_FAILED';
+      throw err;
+    }
+    flagged.push(item.employee_id);
+  }
+
+  return { inserted, flagged_no_longer_eligible: flagged };
+}
+
+/**
  * Recalculate the DRAFT items of a run whose attendance snapshot is stale (attendance_dirty), or every
  * item with { all: true }. LOCKED runs are never touched. Any failure aborts and is reported; the items
  * that were already rebuilt stay consistent because each item is rebuilt atomically from authoritative reads.
@@ -1420,6 +1595,12 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     err.code = 'RUN_NOT_DRAFT';
     throw err;
   }
+
+  // 0. Reconcile the item population against the CURRENT eligible-employee population BEFORE
+  // recalculating existing items (P1-2, PRRT_kwDOSNmW7c6kkm1X): brings in employees who became
+  // eligible after generation, and flags any existing item whose employee is no longer eligible.
+  const population = await reconcileRegularPayrollPopulation(supabase, runId);
+
   const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
     .from('payroll_regular_items')
     .select('id, employee_id, attendance_summary, attendance_source_revision, attendance_snapshot_revision, payroll_input_revision, payroll_snapshot_revision')
@@ -1474,7 +1655,7 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
   // 3 & 4. Recompute and refresh run summary with the fresh coverage
   await refreshRunSummary(supabase, runId, { coverage: runCoverage });
 
-  return { success: true, run_id: runId, recalculated_count: recalculated.length, items: recalculated };
+  return { success: true, run_id: runId, recalculated_count: recalculated.length, items: recalculated, population };
 }
 
 /**
@@ -1567,7 +1748,7 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   // Overtime invariants (fail-fast; the lock RPC enforces the same rules and stays the authority):
   // no pending / unreviewed attendance overtime, approvals match the attendance source, and the payroll
   // snapshot equals the approved minutes (closes the approve -> lock race).
-  const { data: guardRun, error: guardRunErr } = await supabase.from('payroll_runs').select('period_start, period_end, payroll_type').eq('id', runId).single();
+  const { data: guardRun, error: guardRunErr } = await supabase.from('payroll_runs').select('period_start, period_end, payroll_type, business_unit').eq('id', runId).single();
   if (guardRunErr || !guardRun) throw new Error(`Cannot verify payroll run: ${guardRunErr?.message || 'not found'}`);
   if (guardRun && (guardRun.payroll_type === 'REGULAR' || guardRun.payroll_type === 'REGULAR_PAYROLL')) {
     const { data: runItems, error: itemsErr } = await fetchAllRows(() => supabase
@@ -1582,6 +1763,25 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
       err.code = 'EMPTY_RUN';
       throw err;
     }
+
+    // Population completeness guard (P1-2, PRRT_kwDOSNmW7c6kkm1X): every employee CURRENTLY eligible
+    // for this run's business unit/period must already have an item. The DB lock_payroll_run RPC
+    // independently re-verifies this (authoritative backstop) -- this Node check only fails fast.
+    const eligibleNow = await fetchEligibleRegularEmployees(supabase, { businessUnit: guardRun.business_unit, periodEnd: guardRun.period_end });
+    const itemEmployeeIds = new Set(runItems.map((i) => i.employee_id));
+    const missingEligible = eligibleNow.filter((e) => !itemEmployeeIds.has(e.id));
+    if (missingEligible.length > 0) {
+      const err = new Error(`Cannot lock regular payroll run: ${missingEligible.length} eligible employee(s) are missing from the payroll run. Recalculate to reconcile the population first.`);
+      err.code = 'POPULATION_INCOMPLETE';
+      throw err;
+    }
+    const populationChangedItem = runItems.find((i) => i.attendance_summary?.population_changed === true);
+    if (populationChangedItem) {
+      const err = new Error(`Cannot lock regular payroll run: ${populationChangedItem.employee_name_snapshot} is no longer eligible for this run (EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN). Resolve before locking.`);
+      err.code = 'POPULATION_CHANGED';
+      throw err;
+    }
+
     const { data: runAdjustments, error: adjLockErr } = await fetchAllRows(() => supabase
       .from('payroll_adjustments')
       .select('id, payroll_regular_item_id, type, amount')
@@ -1965,6 +2165,9 @@ module.exports = {
   lockRegularPayrollRun,
   recalculateSingleRegularItem,
   recalculateRegularPayrollRun,
+  reconcileRegularPayrollPopulation,
+  buildRegularPayrollCalculatedItem,
+  toRegularPayrollItemRow,
   fetchEmployeeAttendanceSummaries,
   listOvertimeApprovals,
   reviewOvertimeApproval,
