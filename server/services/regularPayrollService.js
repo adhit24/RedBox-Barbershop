@@ -1529,6 +1529,14 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
   const missingEmployees = eligible.filter((e) => !existingByEmployee.has(e.id));
   const inserted = [];
   if (missingEmployees.length > 0) {
+    // Attendance coverage is a run-wide period invariant. Derive it from the complete CURRENT
+    // eligible population before calculating any missing employee, so an employee's own last
+    // attendance date can never shorten the payroll window used by their inserted snapshot.
+    const runCoverage = await computeRunAttendanceCoverage(supabase, {
+      periodStart: run.period_start,
+      periodEnd: run.period_end,
+      employeeIds: eligible.map((e) => e.id),
+    });
     const employeeIds = missingEmployees.map((e) => e.id);
     const employeeMap = new Map(missingEmployees.map((e) => [e.id, e]));
     const sourceVersions = await fetchAttendanceSourceVersions(supabase, employeeIds);
@@ -1540,7 +1548,14 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
     if (firstReconciliationError(overtimeReconciliation)) {
       throw new Error(`Overtime reconciliation failed: ${firstReconciliationError(overtimeReconciliation)}`);
     }
-    const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, run.period_start, run.period_end, employeeMap);
+    const attendanceMap = await fetchEmployeeAttendanceSummaries(
+      supabase,
+      employeeIds,
+      run.period_start,
+      run.period_end,
+      employeeMap,
+      { runCoverage }
+    );
 
     const itemsPayload = missingEmployees.map((emp) => toRegularPayrollItemRow(
       buildRegularPayrollCalculatedItem({
@@ -1648,9 +1663,13 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     employeeIds: allEmployeeIds,
   });
 
-  // 2. Recalculate affected/all payroll items (dirty marker OR revision mismatch)
+  // 2. Recalculate affected/all payroll items. A freshly inserted employee is always included in
+  // this request, even when the initial insert snapshot looks clean, so population reconciliation
+  // and item reconciliation form one ordered path before the final run summary is written.
+  const insertedEmployeeIds = new Set(population.inserted || []);
   const targets = (items || []).filter(
     (i) => all ||
+           insertedEmployeeIds.has(i.employee_id) ||
            i.attendance_summary?.attendance_dirty === true ||
            i.attendance_summary?.adjustments_dirty === true ||
            Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
