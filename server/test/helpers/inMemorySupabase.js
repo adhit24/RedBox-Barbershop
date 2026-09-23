@@ -1,0 +1,355 @@
+'use strict';
+
+/**
+ * Minimal in-memory Supabase/PostgREST double for payroll tests.
+ *  - select / eq / in / gt / gte / lte / order / range / single / maybeSingle
+ *  - PostgREST-like 1000-row response cap unless range() is used
+ *  - embedded employees(...) join for employee_overtime_approvals
+ *  - insert / update().eq().select().single() / delete().eq()
+ *  - failures can be injected: opts.failOn = { 'table.insert' | 'table.update' | 'table.delete' | 'table.select': message }
+ */
+const { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems, emulateFinalizeRegularPayrollRunSummary } = require('./regularPayrollRpc');
+
+function createInMemorySupabase(store, opts = {}) {
+  const failOn = opts.failOn || {};
+  const emulateTriggers = opts.emulateTriggers !== false;
+
+  const bumpSourceVersion = (employeeId) => {
+    store.payroll_attendance_source_versions = store.payroll_attendance_source_versions || [];
+    let rec = store.payroll_attendance_source_versions.find((v) => v.employee_id === employeeId);
+    if (!rec) {
+      rec = { employee_id: employeeId, source_revision: 1 };
+      store.payroll_attendance_source_versions.push(rec);
+    } else {
+      rec.source_revision = Number(rec.source_revision || 0) + 1;
+    }
+  };
+
+  // trg_bump_payroll_workforce_version: mirrors the DB trigger on employees -- a single global counter,
+  // bumped only when a payroll-relevant column changes (is_active/employment_type/join_date/
+  // business_unit for UPDATE; always for INSERT/DELETE). An unrelated employee edit does not bump it.
+  const WORKFORCE_FIELDS = ['is_active', 'employment_type', 'join_date', 'business_unit'];
+  const bumpWorkforceVersion = () => {
+    store.__workforceRevision = Number(store.__workforceRevision || 0) + 1;
+    // Also mirrored as a real queryable row (Round-19, PRRT_kwDOSNmW7c6lG3sS/...sZ): the service layer's
+    // fetchWorkforceVersion() reads public.payroll_workforce_version like any other table via the generic
+    // .from() path below, exactly like production, rather than a special-cased internal counter.
+    store.payroll_workforce_version = store.payroll_workforce_version || [];
+    let row = store.payroll_workforce_version.find((r) => r.id === 1);
+    if (!row) {
+      row = { id: 1, revision: 0 };
+      store.payroll_workforce_version.push(row);
+    }
+    row.revision = store.__workforceRevision;
+  };
+
+  // trg_payroll_adjustment_mark_dirty: same transaction as the adjustment write
+  const markDirty = (itemId) => {
+    const item = (store.payroll_regular_items || []).find((i) => i.id === itemId);
+    if (item) {
+      item.payroll_input_revision = Number(item.payroll_input_revision || 0) + 1;
+      item.attendance_summary = { ...(item.attendance_summary || {}), adjustments_dirty: true };
+    }
+  };
+
+  // trg_overtime_approval_payroll_sync: bumps source version & draft item input revision
+  const overtimeApprovalEffect = (employeeId, date) => {
+    bumpSourceVersion(employeeId);
+    for (const run of store.payroll_runs || []) {
+      if (!['REGULAR', 'REGULAR_PAYROLL'].includes(run.payroll_type)) continue;
+      if (!(date >= run.period_start && date <= run.period_end)) continue;
+      const items = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === run.id && i.employee_id === employeeId);
+      if (run.status === 'DRAFT') {
+        items.filter((i) => i.status !== 'LOCKED').forEach((i) => {
+          i.payroll_input_revision = Number(i.payroll_input_revision || 0) + 1;
+        });
+      }
+    }
+  };
+
+  // trg_attendance_payroll_sync: a payroll-relevant employee_attendance change marks the employee's DRAFT items
+  // attendance_dirty; LOCKED runs are never touched (anomaly log instead). Mirrors apply_attendance_payroll_effect.
+  const ATT_FIELDS = ['status', 'late_minutes', 'overtime_minutes', 'first_check_in', 'last_check_out'];
+  const attendanceEffect = (employeeId, date, operation) => {
+    bumpSourceVersion(employeeId);
+    for (const run of store.payroll_runs || []) {
+      if (!['REGULAR', 'REGULAR_PAYROLL'].includes(run.payroll_type)) continue;
+      if (!(date >= run.period_start && date <= run.period_end)) continue;
+      const items = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === run.id && i.employee_id === employeeId);
+      if (run.status === 'DRAFT') {
+        items.filter((i) => i.status !== 'LOCKED').forEach((i) => {
+          i.attendance_source_revision = Number(i.attendance_source_revision || 0) + 1;
+          i.payroll_input_revision = Number(i.payroll_input_revision || 0) + 1;
+          i.attendance_summary = { ...(i.attendance_summary || {}), attendance_dirty: true };
+        });
+      } else if (run.status === 'LOCKED' && items.length) {
+        (store.payroll_attendance_post_lock_anomalies = store.payroll_attendance_post_lock_anomalies || []).push({ payroll_run_id: run.id, employee_id: employeeId, attendance_date: date, operation });
+      }
+    }
+  };
+  const CAP = 1000;
+  let seq = 1;
+
+  const table = (name) => {
+    const rows = (store[name] = store[name] || []);
+    const filters = [];
+    const orderBy = [];
+    let joinEmployees = false;
+    let window = null;
+    const run = () => {
+      let out = rows.filter((r) => filters.every((f) => f(r)));
+      if (orderBy.length) {
+        out = [...out].sort((a, b) => orderBy.reduce((acc, o) => {
+          if (acc) return acc;
+          const cmp = String(a[o.col]).localeCompare(String(b[o.col]));
+          return o.asc ? cmp : -cmp;
+        }, 0));
+      }
+      if (window) out = out.slice(window[0], window[1] + 1);
+      out = out.slice(0, CAP);
+      if (joinEmployees) {
+        out = out.map((r) => ({ ...r, employees: (store.employees || []).find((e) => e.id === r.employee_id) || null }));
+      }
+      return out;
+    };
+    const fail = (op) => failOn[`${name}.${op}`] || null;
+
+    const api = {
+      select(cols) { joinEmployees = name === 'employee_overtime_approvals' && /employees\s*\(/.test(String(cols || '')); return api; },
+      eq(c, v) { filters.push((r) => r[c] === v); return api; },
+      neq(c, v) { filters.push((r) => r[c] !== v); return api; },
+      or(expr) { // "col.eq.X,col.eq.Y" and/or "col.is.null"
+        const parts = String(expr).split(',').map((x) => {
+          const nullMatch = x.match(/^(.+)\.is\.null$/);
+          if (nullMatch) return { col: nullMatch[1], isNull: true };
+          const [c, v] = x.split('.eq.');
+          return { col: c, val: v };
+        });
+        filters.push((r) => parts.some((p) => (p.isNull ? (r[p.col] === null || r[p.col] === undefined) : String(r[p.col]) === p.val)));
+        return api;
+      },
+      in(c, v) { (api.__in = api.__in || {})[c] = v; filters.push((r) => v.includes(r[c])); return api; },
+      gt(c, v) { filters.push((r) => r[c] > v); return api; },
+      gte(c, v) { filters.push((r) => r[c] >= v); return api; },
+      lte(c, v) { filters.push((r) => r[c] <= v); return api; },
+      order(c, o) { orderBy.push({ col: c, asc: !(o && o.ascending === false) }); return api; },
+      range(a, b) { window = [a, b]; (store.__ranged = store.__ranged || []).push(name); return api; },
+      then(res) {
+        const selMsg = fail('select');
+        if (selMsg) return res({ data: null, error: { message: selMsg } });
+        res({ data: run(), error: null });
+      },
+      single: async () => { const sm = fail('select'); if (sm) return { data: null, error: { message: sm } }; const r = run()[0]; return { data: r || null, error: r ? null : { message: 'not found' } }; },
+      maybeSingle: async () => { const sm = fail('select'); if (sm) return { data: null, error: { message: sm } }; return { data: run()[0] || null, error: null }; },
+      insert(v) {
+        const msg = fail('insert');
+        if (msg) {
+          const o = { select() { return o; }, single: async () => ({ data: null, error: { message: msg } }), then(res) { res({ data: null, error: { message: msg } }); } };
+          return o;
+        }
+        const arr = [].concat(v).map((r) => ({ id: `n${seq++}`, ...r }));
+        if (emulateTriggers && name === 'payroll_adjustments') {
+          // trg_payroll_adjustment_ownership
+          for (const r of arr) {
+            const item = (store.payroll_regular_items || []).find((i) => i.id === r.payroll_regular_item_id);
+            const run = (store.payroll_runs || []).find((x) => x.id === r.payroll_run_id);
+            let message = null;
+            if (!item || item.payroll_run_id !== r.payroll_run_id) message = `Payroll adjustment item ${r.payroll_regular_item_id} does not belong to payroll run ${r.payroll_run_id}`;
+            else if (r.employee_id && r.employee_id !== item.employee_id) message = 'Payroll adjustment employee does not match the payroll item';
+            else if (run && !['REGULAR', 'REGULAR_PAYROLL'].includes(run.payroll_type)) message = 'Payroll adjustment for a regular item requires a REGULAR payroll run';
+            if (message) {
+              const o = { select() { return o; }, single: async () => ({ data: null, error: { message } }), then(res) { res({ data: null, error: { message } }); } };
+              return o;
+            }
+          }
+        }
+        if (emulateTriggers && name === 'employee_attendance') {
+          for (const r of arr) {
+            const existing = rows.find((x) => x.employee_id === r.employee_id && x.attendance_date === r.attendance_date);
+            if (!(existing && ATT_FIELDS.every((f) => existing[f] === r[f]))) attendanceEffect(r.employee_id, r.attendance_date, 'INSERT');
+          }
+        }
+        if (emulateTriggers && name === 'employee_overtime_approvals') {
+          arr.forEach((r) => overtimeApprovalEffect(r.employee_id, r.attendance_date));
+        }
+        rows.push(...arr);
+        if (emulateTriggers && name === 'payroll_adjustments') arr.forEach((r) => markDirty(r.payroll_regular_item_id));
+        if (emulateTriggers && name === 'employees') arr.forEach(() => bumpWorkforceVersion());
+        const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
+        return o;
+      },
+      upsert(v, opts = {}) {
+        const msg = fail('upsert');
+        if (msg) {
+          const o = { select() { return o; }, single: async () => ({ data: null, error: { message: msg } }), then(res) { res({ data: null, error: { message: msg } }); } };
+          return o;
+        }
+        const arr = [].concat(v);
+        const conflictCols = (opts.onConflict || '').split(',').map((c) => c.trim()).filter(Boolean);
+        for (const r of arr) {
+          let idx = -1;
+          if (conflictCols.length > 0) {
+            idx = rows.findIndex((existing) => conflictCols.every((c) => existing[c] === r[c]));
+          }
+          if (idx >= 0) {
+            rows[idx] = { ...rows[idx], ...r };
+          } else {
+            rows.push({ id: r.id || `n${seq++}`, ...r });
+          }
+        }
+        const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
+        return o;
+      },
+      update(u) {
+        const filters = [];
+        const builder = {
+          eq(c, val) {
+            filters.push((r) => r[c] === val);
+            return builder;
+          },
+          neq(c, val) {
+            filters.push((r) => r[c] !== val);
+            return builder;
+          },
+          select() {
+            return builder;
+          },
+          single: async () => execute(true),
+          maybeSingle: async () => execute(false),
+          then(res) {
+            res(execute(false));
+          },
+        };
+        const execute = (mustExist) => {
+          const msg = fail('update');
+          if (msg) return { data: null, error: { message: msg } };
+          const hit = rows.filter((r) => filters.every((f) => f(r)));
+          if (emulateTriggers && name === 'employee_attendance') {
+            hit.forEach((r) => {
+              if (ATT_FIELDS.some((f) => f in u && u[f] !== r[f])) attendanceEffect(r.employee_id, r.attendance_date, 'UPDATE');
+            });
+          }
+          if (emulateTriggers && name === 'employee_overtime_approvals') {
+            hit.forEach((r) => overtimeApprovalEffect(r.employee_id, r.attendance_date));
+          }
+          if (emulateTriggers && name === 'employees') {
+            hit.forEach((r) => {
+              if (WORKFORCE_FIELDS.some((f) => f in u && u[f] !== r[f])) bumpWorkforceVersion();
+            });
+          }
+          hit.forEach((r) => Object.assign(r, u));
+          return { data: hit[0] || null, error: (mustExist && !hit[0]) ? { message: 'not found' } : null };
+        };
+        return builder;
+      },
+      delete() {
+        return {
+          eq(c, val) {
+            const msg = fail('delete');
+            if (msg) return Promise.resolve({ error: { message: msg } });
+            const i = rows.findIndex((r) => r[c] === val);
+            let removed = null;
+            if (i >= 0) removed = rows.splice(i, 1)[0];
+            if (emulateTriggers && name === 'employee_attendance' && removed) attendanceEffect(removed.employee_id, removed.attendance_date, 'DELETE');
+            if (emulateTriggers && name === 'employee_overtime_approvals' && removed) overtimeApprovalEffect(removed.employee_id, removed.attendance_date);
+            if (emulateTriggers && name === 'payroll_adjustments' && removed) markDirty(removed.payroll_regular_item_id);
+            if (emulateTriggers && name === 'employees' && removed) bumpWorkforceVersion();
+            return Promise.resolve({ error: null });
+          },
+        };
+      },
+    };
+    return api;
+  };
+  return {
+    from: table,
+    rpc(fn, args) {
+      if (fn === 'create_regular_payroll_run') {
+        return Promise.resolve(emulateCreateRegularPayrollRun(store, args, {
+          idFactory: () => `n${seq++}`,
+          failItemInsert: failOn['payroll_regular_items.insert'] || null,
+        }));
+      }
+      if (fn === 'add_regular_payroll_run_items') {
+        return Promise.resolve(emulateAddRegularPayrollRunItems(store, args, { idFactory: () => `n${seq++}` }));
+      }
+      if (fn === 'finalize_regular_payroll_run_summary') {
+        return Promise.resolve(emulateFinalizeRegularPayrollRunSummary(store, args));
+      }
+      if (fn === 'lock_payroll_run') {
+        // The invariants live in the SQL (asserted statically) and in the service-side mirror; here only the state change
+        const runRow = (store.payroll_runs || []).find((r) => r.id === args.p_run_id);
+        if (!runRow) return Promise.resolve({ data: null, error: { message: `Payroll run ${args.p_run_id} not found` } });
+        if (runRow.status !== 'DRAFT') return Promise.resolve({ data: null, error: { message: `Cannot lock payroll run: current status is ${runRow.status}` } });
+        // Workforce serialization (P1, PRRT_kwDOSNmW7c6klyj1): the real SQL holds a `FOR UPDATE` row
+        // lock on payroll_workforce_version for the rest of the transaction instead of comparing two
+        // unlocked reads -- a real Postgres transactional guarantee that a synchronous single-threaded
+        // JS double cannot meaningfully reproduce (there is no concurrent statement to block). The
+        // static SQL-text assertions in regular-payroll-round15.test.js verify the FOR UPDATE hold and
+        // the absence of the old capture/recheck pattern instead.
+        // Population completeness backstop (P1-2, PRRT_kwDOSNmW7c6kkm1X): every employee CURRENTLY
+        // eligible for this run's business unit/period must already have an item.
+        if (['REGULAR', 'REGULAR_PAYROLL'].includes(runRow.payroll_type)) {
+          const itemEmployeeIds = new Set((store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).map((i) => i.employee_id));
+          const missingEligible = (store.employees || []).filter((e) =>
+            e.is_active === true &&
+            (e.employment_type == null || e.employment_type === 'regular') &&
+            (!e.join_date || e.join_date <= runRow.period_end) &&
+            (runRow.business_unit === 'ALL' || e.business_unit === runRow.business_unit) &&
+            !itemEmployeeIds.has(e.id));
+          if (missingEligible.length > 0) {
+            return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${missingEligible.length} eligible employee(s) are missing from the payroll run. Recalculate to reconcile the population first.` } });
+          }
+          // Two-way equality, the OTHER direction (P1, PRRT_kwDOSNmW7c6klJoV): an existing item whose
+          // employee is no longer eligible rejects the lock too, re-derived straight from employees --
+          // independent of whether recalculation (and population_changed) ever ran.
+          const employeesById = new Map((store.employees || []).map((e) => [e.id, e]));
+          const extraItems = (store.payroll_regular_items || []).filter((i) => {
+            if (i.payroll_run_id !== runRow.id) return false;
+            const e = employeesById.get(i.employee_id);
+            const eligible = !!e && e.is_active === true &&
+              (e.employment_type == null || e.employment_type === 'regular') &&
+              (!e.join_date || e.join_date <= runRow.period_end) &&
+              (runRow.business_unit === 'ALL' || e.business_unit === runRow.business_unit);
+            return !eligible;
+          });
+          if (extraItems.length > 0) {
+            return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: payroll item exists for employee no longer eligible` } });
+          }
+        }
+        // lock invariant: an item flagged no-longer-eligible (population_changed) cannot be locked
+        const populationChangedItem = (store.payroll_regular_items || []).find((i) => i.payroll_run_id === runRow.id && i.attendance_summary?.population_changed === true);
+        if (populationChangedItem) return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: employee ${populationChangedItem.employee_name_snapshot} is no longer eligible for this run (EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN). Resolve before locking.` } });
+        // lock invariant: a DRAFT item whose attendance changed after calculation cannot be locked (dirty OR revision mismatch)
+        const dirtyItem = (store.payroll_regular_items || []).find((i) =>
+          i.payroll_run_id === runRow.id && (
+            i.attendance_summary?.attendance_dirty === true ||
+            i.attendance_summary?.adjustments_dirty === true ||
+            Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
+            Number(i.payroll_input_revision || 0) !== Number(i.payroll_snapshot_revision || 0)
+          )
+        );
+        if (dirtyItem) return Promise.resolve({ data: null, error: { message: `Payroll attendance snapshot is stale for ${dirtyItem.employee_name_snapshot}. Recalculate before locking.` } });
+        // lock invariant (P1-1): ANY item with REVIEW_REQUIRED rejects lock
+        const reviewItems = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id && i.status === 'REVIEW_REQUIRED');
+        if (reviewItems.length > 0) return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${reviewItems.length} review-required item(s) remain. Resolve all review warnings before locking.` } });
+        // Manual overtime override invariant (P2, PRRT_kwDOSNmW7c6klyj8): validated deterministically
+        // against the item's own rate/minutes, never against the DB approval aggregate.
+        const badOverrideItem = (store.payroll_regular_items || []).find((i) => {
+          if (i.payroll_run_id !== runRow.id) return false;
+          if (i.attendance_summary?.overtime_source !== 'MANUAL_OVERRIDE') return false;
+          const snapMinutes = Number(i.attendance_summary?.approved_overtime_minutes || 0);
+          const expected = Math.round((snapMinutes / 60) * Number(i.overtime_rate || 0));
+          return expected !== Number(i.overtime_amount || 0);
+        });
+        if (badOverrideItem) return Promise.resolve({ data: null, error: { message: `Payroll manual overtime override is inconsistent for ${badOverrideItem.employee_name_snapshot}. Recalculate before locking.` } });
+        runRow.status = 'LOCKED';
+        (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).forEach((i) => { i.status = 'LOCKED'; });
+        return Promise.resolve({ data: { success: true, status: 'LOCKED', run_id: runRow.id }, error: null });
+      }
+      return Promise.resolve({ data: null, error: { message: `Unknown RPC ${fn}` } });
+    },
+  };
+}
+
+module.exports = { createInMemorySupabase };

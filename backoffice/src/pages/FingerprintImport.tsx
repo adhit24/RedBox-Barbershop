@@ -7,6 +7,8 @@ import { ErrorState } from '../components/ErrorState';
 import {
   previewAttendanceImport,
   commitAttendanceImport,
+  FINGERPRINT_MACHINES,
+  type FingerprintMachine,
   getAttendanceImportBatches,
   type FingerprintPreviewData,
   type FingerprintCommitResult,
@@ -19,6 +21,8 @@ export function FingerprintImport() {
   const [stage, setStage] = useState<FlowStage>('SELECT');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileBase64, setFileBase64] = useState<string>('');
+  const [machine, setMachine] = useState<FingerprintMachine | ''>('');
+  const [previewMachine, setPreviewMachine] = useState<FingerprintMachine | ''>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [committing, setCommitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,6 +57,13 @@ export function FingerprintImport() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!machine) {
+      setErrorMsg('Pilih mesin fingerprint terlebih dahulu.');
+      e.target.value = '';
+      return;
+    }
+    const chosenMachine = machine;
+
     setErrorMsg(null);
     setSelectedFile(file);
 
@@ -64,9 +75,10 @@ export function FingerprintImport() {
         setFileBase64(result);
 
         // Stage B: Automatic PARSE ONLY without mutation
-        const previewRes = await previewAttendanceImport(result, file.name);
+        const previewRes = await previewAttendanceImport(result, file.name, chosenMachine);
         if (previewRes.ok && previewRes.data) {
           setPreviewData(previewRes.data);
+          setPreviewMachine(chosenMachine);
           setStage('PREVIEW');
         } else {
           setErrorMsg('Gagal memproses preview file fingerprint.');
@@ -87,6 +99,7 @@ export function FingerprintImport() {
     setStage('SELECT');
     setSelectedFile(null);
     setFileBase64('');
+    setPreviewMachine('');
     setPreviewData(null);
     setCommitResult(null);
     setErrorMsg(null);
@@ -96,13 +109,13 @@ export function FingerprintImport() {
   };
 
   const handleCommit = async () => {
-    if (!fileBase64 || !selectedFile) return;
+    if (!fileBase64 || !selectedFile || !previewMachine) return;
 
     try {
       setCommitting(true);
       setErrorMsg(null);
 
-      const res = await commitAttendanceImport(fileBase64, selectedFile.name);
+      const res = await commitAttendanceImport(fileBase64, selectedFile.name, previewMachine);
       if (res.ok && res.data) {
         setCommitResult(res.data);
         setStage('COMMITTED');
@@ -158,10 +171,31 @@ export function FingerprintImport() {
               </div>
             </div>
 
+            <div className="mb-4">
+              <label htmlFor="fingerprint-machine-select" className="mb-1 block text-xs font-semibold text-rb-text">
+                Mesin Fingerprint (wajib)
+              </label>
+              <select
+                id="fingerprint-machine-select"
+                value={machine}
+                onChange={(ev) => setMachine(ev.target.value as FingerprintMachine | '')}
+                className="w-full rounded-rb-button border border-rb-border bg-rb-bg px-3 py-2 text-sm"
+              >
+                <option value="">— Pilih mesin —</option>
+                {FINGERPRINT_MACHINES.map((m) => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-rb-text-faint">
+                Mesin menentukan namespace ID karyawan. Bukan berdasarkan nama file, unit bisnis, atau cabang.
+              </p>
+            </div>
+
             <div className="rounded-2xl border-2 border-dashed border-rb-border bg-rb-bg px-8 py-10 text-center transition-colors hover:border-rb-red/50">
               <input
                 ref={fileInputRef}
                 type="file"
+                disabled={!machine}
                 accept=".xls,.xlsx"
                 onChange={handleFileChange}
                 className="hidden"

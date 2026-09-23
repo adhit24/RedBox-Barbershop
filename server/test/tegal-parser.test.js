@@ -244,6 +244,7 @@ test('Tegal Parser: End-to-End Preview & Commit Flow with Mock DB', async () => 
           select: () => ({
             eq: async () => ({ data: [] }),
           }),
+          upsert: async () => ({ error: null }),
         };
       }
       if (tableName === 'employee_attendance') {
@@ -289,13 +290,18 @@ test('Tegal Parser: End-to-End Preview & Commit Flow with Mock DB', async () => 
   assert.equal(preview.period.from, '2026-08-26');
   assert.equal(preview.period.to, '2026-09-19');
   assert.equal(preview.employees_detected, 13);
-  assert.equal(preview.matched_count, 2); // Ahmad and Melly matched by code / name
-  assert.equal(preview.unmatched_count, 11); // Remaining 11 unmatched
+  // Tegal's raw export only reports generic "Kapster NN" labels, never real names, so
+  // employee_code alone is no longer sufficient authority for a brand-new machine identity
+  // (PRRT_kwDOSNmW7c6kYVyh): every one of the 13 reported IDs requires manual corroboration
+  // on its first import, even the ones whose numeric code happens to match a real employee.
+  assert.equal(preview.matched_count, 0);
+  assert.equal(preview.unmatched_count, 13);
   assert.equal(preview.punch_records_count, 192);
   assert.ok(preview.sample_records.length > 0);
 
-  // 2. Commit Import
-  const result = await importer.commitImport({
+  // 2. Commit Import: first import with no manual corroboration -> nothing auto-maps, everything
+  // with punch evidence becomes an unmatched_employee exception for manual review.
+  const uncorroborated = await importer.commitImport({
     buffer: buf,
     filename: 'tegalsept.xls',
     uploadedBy: 'manager@redbox.com',
@@ -303,15 +309,35 @@ test('Tegal Parser: End-to-End Preview & Commit Flow with Mock DB', async () => 
     supabase: mockSupabase,
   });
 
-  assert.equal(result.status, 'partial'); // partial because unmatched rows exist
-  assert.equal(result.employees_detected, 13);
-  assert.equal(result.matched_count, 2);
-  assert.equal(result.unmatched_count, 11);
-  assert.ok(result.rows_imported > 0);
-  assert.ok(result.rows_exceptions > 0);
+  assert.equal(uncorroborated.status, 'partial');
+  assert.equal(uncorroborated.employees_detected, 13);
+  assert.equal(uncorroborated.matched_count, 0);
+  assert.equal(uncorroborated.unmatched_count, 13);
+  assert.equal(uncorroborated.rows_imported, 0, 'no attendance is written without a matched identity');
+  assert.ok(uncorroborated.rows_exceptions > 0);
   assert.ok(mockDbBatches.length > 0);
-  assert.ok(mockDbEmpAttendance.length > 0);
+  assert.equal(mockDbEmpAttendance.length, 0);
   assert.ok(mockDbExceptions.length > 0);
+
+  // 3. Once a manager manually corroborates Ahmad and Melly (Exception Review), that machine-scoped
+  // mapping becomes the highest-authority Priority 1 identity for every future import.
+  const corroborated = await importer.commitImport({
+    buffer: buf,
+    filename: 'tegalsept.xls',
+    uploadedBy: 'manager@redbox.com',
+    userAuth: { email: 'manager@redbox.com' },
+    supabase: mockSupabase,
+    manualMappings: [
+      { external_employee_id: '1', external_name: 'Kapster 01', target_type: 'employee', employee_id: 'emp-ahmad-uuid' },
+      { external_employee_id: '2', external_name: 'Kapster 02', target_type: 'employee', employee_id: 'emp-melly-uuid' },
+    ],
+  });
+
+  assert.equal(corroborated.status, 'partial'); // partial: the remaining 11 are still unmatched
+  assert.equal(corroborated.matched_count, 2);
+  assert.equal(corroborated.unmatched_count, 11);
+  assert.ok(corroborated.rows_imported > 0);
+  assert.ok(mockDbEmpAttendance.length > 0);
 });
 
 test('Attendance Import: terminated workforce names are rejected before matching', () => {

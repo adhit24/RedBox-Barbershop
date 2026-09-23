@@ -198,16 +198,94 @@ function extractDailyPunches(workbook, period) {
 }
 
 /**
+ * Machine scoping. Fingerprint machine IDs are only unique WITHIN a machine
+ * (Bypass ID 3 != Samadikun ID 3), so identity rows for a named machine are
+ * stored with source = 'fingerprint:<machine>'. The machine is declared by the
+ * uploader (never derived from the filename or the employee's business unit).
+ * Without a machine the legacy global source 'fingerprint' is used.
+ */
+const LEGACY_IDENTITY_SOURCE = 'fingerprint';
+
+// Identities that must never receive attendance (terminated). Combined with the
+// names of inactive employees/barbers loaded from the DB.
+// Off/absent (zero-punch) days are only written for identities that clearly use
+// this machine (>= 30% of the period's days have a punch). Sporadic identities
+// (e.g. one stray punch from an employee whose real machine is elsewhere) only
+// contribute the days that actually have punches, never fabricated absences.
+const PRIMARY_MACHINE_MIN_PUNCH_DAY_RATIO = 0.3;
+
+const TERMINATED_NAMES = ['Ajeng', 'Reka', 'Anggi', 'Hardi', 'Farhan'];
+
+function normalizeMachineSource(machineSource) {
+  const m = normalizeAlphanumeric(machineSource);
+  return m || null;
+}
+
+/**
+ * Machines that can produce fingerprint exports (the same names as the employee/barber branches). The
+ * Backoffice flow MUST name one; it is never derived from the filename, the business unit or the employee
+ * branch. Adding a machine is a deliberate code change so a typo cannot create a stray identity namespace.
+ */
+const FINGERPRINT_MACHINES = ['bypass', 'samadikun', 'csb', 'tegal', 'sumber'];
+
+/** Normalize and validate an explicitly chosen machine; throws MACHINE_SOURCE_REQUIRED / MACHINE_SOURCE_UNKNOWN. */
+function requireKnownMachineSource(value) {
+  const m = normalizeMachineSource(value);
+  if (!m) {
+    const err = new Error('machine_source wajib diisi: pilih mesin fingerprint sumber file ini');
+    err.code = 'MACHINE_SOURCE_REQUIRED';
+    throw err;
+  }
+  if (!FINGERPRINT_MACHINES.includes(m)) {
+    const err = new Error(`machine_source tidak dikenal: ${m}`);
+    err.code = 'MACHINE_SOURCE_UNKNOWN';
+    throw err;
+  }
+  return m;
+}
+
+/**
+ * Identity namespaces of an attendance exception, from ITS OWN raw_data (one canonical derivation):
+ *   machine_source present -> identitySource = siblingKey = fingerprint:<machine>
+ *   legacy record (no machine_source) -> identitySource stays the legacy global 'fingerprint', and the
+ *   sibling key stays the legacy raw_data.source value; a legacy record is never reinterpreted as a machine.
+ */
+function exceptionNamespaces(rawData) {
+  const machine = normalizeMachineSource(rawData && rawData.machine_source);
+  if (machine) {
+    const scoped = `${LEGACY_IDENTITY_SOURCE}:${machine}`;
+    return { identitySource: scoped, siblingKey: scoped, machine };
+  }
+  return {
+    identitySource: LEGACY_IDENTITY_SOURCE,
+    siblingKey: String((rawData && rawData.source) || LEGACY_IDENTITY_SOURCE).trim(),
+    machine: null,
+  };
+}
+
+function identitySourceFor(machineSource) {
+  const m = normalizeMachineSource(machineSource);
+  return m ? `${LEGACY_IDENTITY_SOURCE}:${m}` : LEGACY_IDENTITY_SOURCE;
+}
+
+/**
  * 6. Match Employees
  * Deterministic multi-stage matching against existingIdentities, DB employees, and DB barbers.
+ * No fuzzy matching: anything not resolved exactly is UNMATCHED (manual review),
+ * anything matching a terminated identity is REJECTED (no attendance, no exception).
  */
-function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], existingIdentities = [] }) {
+function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], existingIdentities = [], machineSource = null, terminatedNames = [] }) {
+  const identitySource = identitySourceFor(machineSource);
   const identityMap = new Map();
   for (const idn of existingIdentities) {
-    if (idn.source === 'fingerprint' && idn.external_employee_id) {
+    if (idn.source === identitySource && idn.external_employee_id) {
       identityMap.set(String(idn.external_employee_id).trim(), idn);
     }
   }
+
+  const terminatedSet = new Set(
+    [...TERMINATED_NAMES, ...terminatedNames].map(normalizeAlphanumeric).filter(Boolean)
+  );
 
   const matched = [];
   const unmatched = [];
@@ -229,49 +307,90 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
       continue;
     }
 
-    // Priority 1: Known mapping in identity table
+    // Priority 1: Known mapping in identity table (machine-scoped) -- authoritative ONLY while the
+    // mapped target is still active (PRRT_kwDOSNmW7c6klJoY). A person mapped while active must not
+    // keep silently receiving attendance after being deactivated. dbEmployees/dbBarbers already carry
+    // only active rows (loadMatchingContext), so membership there IS the active check; the historical
+    // mapping row itself is never deleted (audit evidence, still authoritative once reactivated).
     if (identityMap.has(extId)) {
       const idn = identityMap.get(extId);
-      matched.push({
-        ...fe,
-        match_type: 'identity_mapping',
-        target_type: idn.target_type,
-        employee_id: idn.employee_id || null,
-        barber_id: idn.barber_id || null,
-        target_name: idn.external_name || extName,
-      });
+      const targetActive = idn.target_type === 'barber'
+        ? dbBarbers.some(b => b.id === idn.barber_id)
+        : dbEmployees.some(e => e.id === idn.employee_id);
+      if (targetActive) {
+        matched.push({
+          ...fe,
+          match_type: 'identity_mapping',
+          target_type: idn.target_type,
+          employee_id: idn.employee_id || null,
+          barber_id: idn.barber_id || null,
+          target_name: idn.external_name || extName,
+        });
+        continue;
+      }
+      // Mapped target is no longer active: do NOT write attendance and do NOT auto-remap through a
+      // lower-priority rule (position 2/3/4 could bind this machine identity to someone else entirely).
+      // Route to manual review via the existing unmatched/exception lifecycle instead.
+      unmatched.push({ ...fe, reason: 'mapped_target_inactive' });
       continue;
     }
 
-    // Priority 2: Match employees.employee_code
+    // Priority 2: Match employees.employee_code, but ONLY when corroborated by an exact normalized
+    // name/nickname match to the SAME employee. A machine ID is only unique within its own machine
+    // (Bypass ID 3 != Samadikun ID 3); without a scoped identity yet, the global employee_code alone
+    // is not sufficient authority to auto-map a brand-new machine identity (PRRT_kwDOSNmW7c6kYVyh).
     const empByCode = dbEmployees.find(e => String(e.employee_code || '').trim() === extId);
     if (empByCode) {
-      matched.push({
+      const codeName = normalizeAlphanumeric(empByCode.name);
+      const codeNick = normalizeAlphanumeric(empByCode.nickname);
+      const nameCorroborates = (!!codeName && codeName === normExtName) || (!!codeNick && codeNick === normExtName);
+      if (nameCorroborates) {
+        matched.push({
+          ...fe,
+          match_type: 'employee_code',
+          target_type: 'employee',
+          employee_id: empByCode.id,
+          barber_id: null,
+          target_name: empByCode.name,
+          business_unit: empByCode.business_unit || null,
+          branch: empByCode.branch || null,
+        });
+        continue;
+      }
+      // Code matched a different name: do NOT auto-map. Route to manual review instead of falling
+      // through to a name-only match that could bind this ID to yet another employee.
+      unmatched.push({
         ...fe,
-        match_type: 'employee_code',
-        target_type: 'employee',
-        employee_id: empByCode.id,
-        barber_id: null,
-        target_name: empByCode.name,
+        reason: 'employee_code_name_mismatch',
+        candidate_matches: [{
+          type: 'employee', id: empByCode.id, name: empByCode.name, nickname: empByCode.nickname, branch: empByCode.branch,
+        }],
       });
       continue;
     }
 
-    // Priority 3: Exact deterministic normalized name or nickname
-    // Check DB employees
+    // Priority 3/4: Exact deterministic normalized name, then nickname
     const empMatches = dbEmployees.filter(e => {
       const nName = normalizeAlphanumeric(e.name);
       const nNick = normalizeAlphanumeric(e.nickname);
       return nName === normExtName || (nNick && nNick === normExtName);
     });
-
-    // Check DB barbers
-    const barMatches = dbBarbers.filter(b => {
-      const nName = normalizeAlphanumeric(b.name);
-      return nName === normExtName;
-    });
-
+    const barMatches = dbBarbers.filter(b => normalizeAlphanumeric(b.name) === normExtName);
     const totalMatches = empMatches.length + barMatches.length;
+    const candidates = [
+      ...empMatches.map(e => ({ type: 'employee', id: e.id, name: e.name, nickname: e.nickname, branch: e.branch })),
+      ...barMatches.map(b => ({ type: 'barber', id: b.id, name: b.name, branch: b.branch })),
+    ];
+
+    // Terminated guard: exact terminated name with no active counterpart -> REJECT
+    if (normExtName && terminatedSet.has(normExtName)) {
+      if (totalMatches === 0) {
+        rejected.push({ ...fe, reason: 'terminated_employee' });
+      } else {
+        unmatched.push({ ...fe, reason: 'ambiguous_terminated_name', candidate_matches: candidates });
+      }
+      continue;
+    }
 
     if (totalMatches === 1) {
       if (empMatches.length === 1) {
@@ -283,6 +402,8 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
           employee_id: emp.id,
           barber_id: null,
           target_name: emp.name,
+          business_unit: emp.business_unit || null,
+          branch: emp.branch || null,
         });
       } else {
         const bar = barMatches[0];
@@ -293,19 +414,17 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
           employee_id: null,
           barber_id: bar.id,
           target_name: bar.name,
+          branch: bar.branch || null,
         });
       }
       continue;
     }
 
-    // Priority 4: Ambiguous (> 1 match) or 0 match -> Flag UNMATCHED
+    // Ambiguous (> 1 match) or 0 match -> UNMATCHED / manual review
     unmatched.push({
       ...fe,
       reason: totalMatches > 1 ? 'ambiguous_name_match' : 'unresolved_employee',
-      candidate_matches: [
-        ...empMatches.map(e => ({ type: 'employee', id: e.id, name: e.name, nickname: e.nickname, branch: e.branch })),
-        ...barMatches.map(b => ({ type: 'barber', id: b.id, name: b.name, branch: b.branch })),
-      ],
+      candidate_matches: candidates,
     });
   }
 
@@ -334,9 +453,298 @@ function deriveAttendanceStatus(record) {
 }
 
 /**
+ * Per-machine-identity activity summary from parsed daily records.
+ */
+function summarizeActivity(dailyRecords) {
+  const byId = new Map();
+  for (const r of dailyRecords) {
+    const s = byId.get(r.external_employee_id) || { days_with_punch: 0, total_punches: 0, records: 0 };
+    const n = (r.raw_punches || []).length;
+    s.records++;
+    if (n > 0) s.days_with_punch++;
+    s.total_punches += n;
+    byId.set(r.external_employee_id, s);
+  }
+  return byId;
+}
+
+/**
+ * Identity mapping report: one row per machine identity with status
+ * AUTO_MATCH_SAFE | MANUAL_REVIEW | REJECTED_TERMINATED.
+ */
+function buildIdentityReport({ machineSource, matched, unmatched, rejected, dailyRecords }) {
+  const activity = summarizeActivity(dailyRecords);
+  const machine = normalizeMachineSource(machineSource);
+  const base = (fe) => ({
+    machine_id: fe.external_employee_id,
+    machine_name: fe.external_name,
+    machine_source: machine,
+    machine_department: fe.department || null,
+    ...(activity.get(fe.external_employee_id) || { days_with_punch: 0, total_punches: 0, records: 0 }),
+  });
+  const none = { matched_employee: null, target_type: null, business_unit: null, branch: null, confidence: 'NONE' };
+  return [
+    ...matched.map(m => ({
+      ...base(m),
+      matched_employee: m.target_name,
+      target_type: m.target_type,
+      business_unit: m.business_unit || null,
+      branch: m.branch || null,
+      match_method: m.match_type,
+      confidence: m.match_type === 'identity_mapping' || m.match_type === 'employee_code' ? 'HIGH' : 'HIGH_EXACT_NAME',
+      status: 'AUTO_MATCH_SAFE',
+    })),
+    ...unmatched.map(u => ({
+      ...base(u), ...none,
+      match_method: u.reason,
+      status: 'MANUAL_REVIEW',
+      candidates: u.candidate_matches || [],
+    })),
+    ...rejected.map(r => ({
+      ...base(r), ...none,
+      match_method: r.reason,
+      status: 'REJECTED_TERMINATED',
+    })),
+  ];
+}
+
+async function safeSelect(buildQuery) {
+  try {
+    const res = await buildQuery();
+    return res && res.data ? res.data : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
+ * Read every row of a query page by page (PostgREST caps a response at 1000 rows). buildQuery must
+ * return a fresh query with a deterministic order each call. A failed read throws: callers use the
+ * result to avoid overwriting/duplicating data, so treating a failure as "no rows" would be unsafe.
+ * (Only exceptions thrown by incomplete test doubles are tolerated; a real client reports errors
+ * via res.error.)
+ */
+async function readAllPages(buildQuery, { pageSize = 1000, failMessage, failCode } = {}) {
+  const out = [];
+  for (let offset = 0; ; offset += pageSize) {
+    let res;
+    let pageable = false;
+    try {
+      const q = buildQuery();
+      pageable = typeof q.range === 'function';
+      res = await (pageable ? q.range(offset, offset + pageSize - 1) : q);
+    } catch (_) {
+      return out;
+    }
+    if (res && res.error) {
+      const err = new Error(`${failMessage}: ${res.error.message}`);
+      err.code = failCode;
+      throw err;
+    }
+    const rows = (res && res.data) || [];
+    out.push(...rows);
+    if (!pageable || rows.length < pageSize) break;
+  }
+  return out;
+}
+
+/**
+ * Existing attendance rows for the imported employees, restricted to the imported period. A row
+ * missed here would be treated as new and its prior punch evidence overwritten.
+ */
+function fetchExistingAttendance(supabase, employeeIds, dateFrom, dateTo, pageSize = 1000) {
+  return readAllPages(() => supabase
+    .from('employee_attendance')
+    .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, overtime_minutes, notes')
+    .in('employee_id', employeeIds)
+    .gte('attendance_date', dateFrom)
+    .lte('attendance_date', dateTo)
+    .order('employee_id')
+    .order('attendance_date'), {
+    pageSize,
+    failMessage: 'Gagal membaca presensi existing untuk merge',
+    failCode: 'EXISTING_ATTENDANCE_READ_FAILED',
+  });
+}
+
+/**
+ * Pending exceptions relevant to this import (import period + the identities being written), used to
+ * de-duplicate on re-import. Bounded and paged so history beyond the first page cannot hide a duplicate.
+ */
+function fetchPendingExceptions(supabase, externalIds, dateFrom, dateTo, pageSize = 1000) {
+  return readAllPages(() => supabase
+    .from('attendance_exceptions')
+    .select('id, external_employee_id, attendance_date, exception_type, raw_data')
+    .eq('status', 'pending')
+    .in('external_employee_id', externalIds)
+    .gte('attendance_date', dateFrom)
+    .lte('attendance_date', dateTo)
+    .order('attendance_date')
+    .order('external_employee_id')
+    .order('id'), {
+    pageSize,
+    failMessage: 'Gagal membaca exception pending untuk deduplikasi',
+    failCode: 'EXISTING_EXCEPTIONS_READ_FAILED',
+  });
+}
+
+/**
+ * Pending single_punch exceptions in the import period, used to reconcile stale exceptions against
+ * the current canonical attendance (PRRT_kwDOSNmW7c6kYVyo). Scoped by exception_type so unrelated
+ * pending exceptions (unmatched_employee, invalid_date, etc.) are never touched.
+ */
+function fetchPendingSinglePunchExceptions(supabase, dateFrom, dateTo, pageSize = 1000) {
+  return readAllPages(() => supabase
+    .from('attendance_exceptions')
+    .select('id, attendance_date, exception_type, raw_data, status')
+    .eq('status', 'pending')
+    .eq('exception_type', 'single_punch')
+    .gte('attendance_date', dateFrom)
+    .lte('attendance_date', dateTo)
+    .order('attendance_date')
+    .order('id'), {
+    pageSize,
+    failMessage: 'Gagal membaca exception single_punch pending untuk rekonsiliasi',
+    failCode: 'PENDING_SINGLE_PUNCH_READ_FAILED',
+  });
+}
+
+/**
+ * Reconcile stale pending `single_punch` exceptions against the CURRENT canonical attendance row
+ * (post-merge, just written to employee_attendance). A re-import that supplies the missing punch
+ * makes the original exception's premise false; leaving it pending forever blocks payroll lock with
+ * `unresolved_exceptions_count > 0` for an issue that no longer exists.
+ *
+ * Only auto-resolves when the underlying issue is objectively no longer true (the row now has >= 2
+ * punches). Never touches other exception types, still-incomplete rows, or exceptions for a
+ * different employee/date. Audit history is preserved: the row is marked 'resolved', not deleted.
+ * Best-effort: a failure here must not undo an attendance import that already succeeded.
+ */
+async function reconcileStaleSinglePunchExceptions(supabase, employeeAttendanceRows, dateFrom, dateTo) {
+  if (!employeeAttendanceRows || employeeAttendanceRows.length === 0) return 0;
+  const canonicalByKey = new Map(
+    employeeAttendanceRows.map(r => [`${r.employee_id}|${r.attendance_date}`, r])
+  );
+
+  let pending;
+  try {
+    pending = await fetchPendingSinglePunchExceptions(supabase, dateFrom, dateTo);
+  } catch (readErr) {
+    console.error('Gagal membaca exception single_punch untuk rekonsiliasi:', readErr.message);
+    return 0;
+  }
+
+  const resolvedAt = new Date().toISOString();
+  let resolvedCount = 0;
+  for (const exc of pending) {
+    const empId = exc.raw_data?.employee_id;
+    if (!empId) continue;
+    const row = canonicalByKey.get(`${empId}|${exc.attendance_date}`);
+    if (!row || (row.raw_punches || []).length < 2) continue; // still incomplete: leave pending
+
+    try {
+      const { error } = await supabase
+        .from('attendance_exceptions')
+        .update({
+          status: 'resolved',
+          resolution_notes: 'AUTO_RESOLVED_AFTER_ATTENDANCE_CORRECTION',
+          resolved_by: 'system:fingerprint_import',
+          resolved_at: resolvedAt,
+          updated_at: resolvedAt,
+        })
+        .eq('id', exc.id);
+      if (error) {
+        console.error(`Gagal merekonsiliasi exception single_punch ${exc.id}:`, error.message);
+        continue;
+      }
+      resolvedCount++;
+    } catch (writeErr) {
+      console.error(`Gagal merekonsiliasi exception single_punch ${exc.id}:`, writeErr.message);
+    }
+  }
+  return resolvedCount;
+}
+
+/**
+ * Load active workforce, machine-scoped identities and terminated names.
+ */
+async function loadMatchingContext(supabase, machineSource) {
+  const identitySource = identitySourceFor(machineSource);
+  const [empRes, barRes, idnRes, inEmpRes, inBarRes] = await Promise.all([
+    supabase.from('employees').select('id, employee_code, name, nickname, position, branch, business_unit').eq('is_active', true),
+    supabase.from('barbers').select('id, name, branch').eq('is_active', true),
+    supabase.from('employee_attendance_identity').select('*').eq('source', identitySource),
+    supabase.from('employees').select('name, nickname').eq('is_active', false),
+    supabase.from('barbers').select('name').eq('is_active', false),
+  ]);
+
+  if (idnRes && idnRes.error) {
+    const err = new Error(`Gagal membaca machine-scoped identities: ${idnRes.error.message}`);
+    err.code = 'IDENTITY_CONTEXT_READ_FAILED';
+    throw err;
+  }
+  if (empRes && empRes.error) {
+    const err = new Error(`Gagal membaca master employee: ${empRes.error.message}`);
+    err.code = 'EMPLOYEE_MASTER_READ_FAILED';
+    throw err;
+  }
+  if (barRes && barRes.error) {
+    const err = new Error(`Gagal membaca master barber: ${barRes.error.message}`);
+    err.code = 'BARBER_MASTER_READ_FAILED';
+    throw err;
+  }
+  if (inEmpRes && inEmpRes.error) {
+    const err = new Error(`Gagal membaca inactive employees: ${inEmpRes.error.message}`);
+    err.code = 'EMPLOYEE_MASTER_READ_FAILED';
+    throw err;
+  }
+  if (inBarRes && inBarRes.error) {
+    const err = new Error(`Gagal membaca inactive barbers: ${inBarRes.error.message}`);
+    err.code = 'BARBER_MASTER_READ_FAILED';
+    throw err;
+  }
+
+  const terminatedNames = [];
+  for (const e of inEmpRes.data || []) terminatedNames.push(e.name, e.nickname);
+  for (const b of inBarRes.data || []) terminatedNames.push(b.name);
+
+  return {
+    dbEmployees: empRes.data || [],
+    dbBarbers: barRes.data || [],
+    existingIdentities: idnRes.data || [],
+    terminatedNames: terminatedNames.filter(Boolean),
+  };
+}
+
+/**
+ * Merge two attendance records for the same employee+date (e.g. same person
+ * enrolled on two machines, or an existing row from another import). Punch
+ * evidence is unioned, never lost; a zero-punch record never overrides one
+ * that has punches.
+ */
+function mergeAttendanceRecords(a, b) {
+  const pa = a.raw_punches || [];
+  const pb = b.raw_punches || [];
+  if (pa.length === 0 && pb.length === 0) return { ...b };
+  if (pa.length === 0) return { ...b };
+  if (pb.length === 0) return { ...a };
+  const punches = [...new Set([...pa, ...pb])].sort();
+  // Late minutes belong to whichever record holds the earliest check-in.
+  const earliest = pa[0] <= pb[0] ? a : b;
+  const merged = {
+    ...earliest,
+    raw_punches: punches,
+    first_check_in: punches[0] || null,
+    last_check_out: punches.length > 1 ? punches[punches.length - 1] : null,
+  };
+  merged.status = deriveAttendanceStatus(merged);
+  return merged;
+}
+
+/**
  * 8. Preview Import (Stage B) — ZERO DB Mutation
  */
-async function previewImport({ buffer, filename, uploadedBy, supabase }) {
+async function previewImport({ buffer, filename, uploadedBy, supabase, machineSource = null }) {
   const fileMeta = validateFileSafety(buffer, filename);
   const workbook = parseWorkbook(buffer);
   const parsedData = parseAttendanceWorkbook(workbook);
@@ -360,28 +768,16 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     }
   }
 
-  // Load active DB employees, barbers, and existing identities
-  let dbEmployees = [];
-  let dbBarbers = [];
-  let existingIdentities = [];
-
-  if (supabase) {
-    const [empRes, barRes, idnRes] = await Promise.all([
-      supabase.from('employees').select('id, employee_code, name, nickname, position, branch, business_unit').eq('is_active', true),
-      supabase.from('barbers').select('id, name, branch').eq('is_active', true),
-      supabase.from('employee_attendance_identity').select('*').eq('source', 'fingerprint'),
-    ]);
-    dbEmployees = empRes.data || [];
-    dbBarbers = barRes.data || [];
-    existingIdentities = idnRes.data || [];
-  }
-
+  let ctx = { dbEmployees: [], dbBarbers: [], existingIdentities: [], terminatedNames: [] };
+  if (supabase) ctx = await loadMatchingContext(supabase, machineSource);
   const { matched, unmatched, rejected } = matchEmployees({
     fileEmployees,
-    dbEmployees,
-    dbBarbers,
-    existingIdentities,
+    ...ctx,
+    machineSource,
   });
+
+  const activity = summarizeActivity(dailyRecords);
+  const relevantUnmatched = unmatched.filter(u => (activity.get(u.external_employee_id)?.total_punches || 0) > 0);
 
   const warnings = [];
 
@@ -397,6 +793,15 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
       type: 'unmatched_employees',
       message: `${unmatched.length} karyawan mesin tidak dapat dicocokkan otomatis dengan database. Record mereka akan diarahkan ke Exception Review.`,
       unmatched_ids: unmatched.map(u => u.external_employee_id),
+      relevant_unmatched_ids: relevantUnmatched.map(u => u.external_employee_id),
+    });
+  }
+
+  if (rejected.length > 0) {
+    warnings.push({
+      type: 'rejected_terminated',
+      message: `${rejected.length} identitas mesin ditolak karena karyawan terminated (tidak ada presensi & tidak ada exception).`,
+      rejected_ids: rejected.map(r => r.external_employee_id),
     });
   }
 
@@ -424,6 +829,7 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     file_hash: fileMeta.fileHash,
     format: parsedData.format,
     detected_format: parsedData.format,
+    machine_source: normalizeMachineSource(machineSource),
     period,
     employees_detected: fileEmployees.length,
     matched_count: matched.length,
@@ -436,6 +842,7 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     matched,
     unmatched,
     rejected,
+    identity_report: buildIdentityReport({ machineSource, matched, unmatched, rejected, dailyRecords }),
     warnings,
     metadata: parsedData.metadata || {},
     sample_records: dailyRecords
@@ -457,7 +864,7 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
 /**
  * 9. Commit Import (Stage C) — Write to Database Idempotently
  */
-async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, manualMappings = [] }) {
+async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, manualMappings = [], machineSource = null }) {
   if (!supabase) {
     const err = new Error('Supabase client is required for commit');
     err.code = 'SUPABASE_REQUIRED';
@@ -471,6 +878,12 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   const period = parsedData.period;
   const fileEmployees = parsedData.employees;
   const dailyRecords = parsedData.dailyRecords;
+  const identitySource = identitySourceFor(machineSource);
+
+  // 1. Load authoritative matching context BEFORE any mutation.
+  // Fail-closed: If reading machine-scoped identities or workforce fails, abort immediately
+  // before writing manual mappings, attendance, or exceptions.
+  const ctx = await loadMatchingContext(supabase, machineSource);
 
   // Apply any manualMappings passed by manager.
   // Explicitly block former employees even if a manager attempts to remap them manually.
@@ -484,10 +897,10 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         throw err;
       }
       if (mapping.external_employee_id && (mapping.employee_id || mapping.barber_id)) {
-        await supabase
+        const { error: mapErr } = await supabase
           .from('employee_attendance_identity')
           .upsert({
-            source: 'fingerprint',
+            source: identitySource,
             external_employee_id: String(mapping.external_employee_id).trim(),
             external_name: mapping.external_name || null,
             target_type: mapping.target_type || (mapping.employee_id ? 'employee' : 'barber'),
@@ -495,25 +908,28 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
             barber_id: mapping.barber_id || null,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'source,external_employee_id' });
+        if (mapErr) {
+          const err = new Error(`Gagal menyimpan mapping manual: ${mapErr.message}`);
+          err.code = 'IDENTITY_MAPPING_WRITE_FAILED';
+          throw err;
+        }
+        ctx.existingIdentities = ctx.existingIdentities.filter(i => i.external_employee_id !== String(mapping.external_employee_id).trim());
+        ctx.existingIdentities.push({
+          source: identitySource,
+          external_employee_id: String(mapping.external_employee_id).trim(),
+          external_name: mapping.external_name || null,
+          target_type: mapping.target_type || (mapping.employee_id ? 'employee' : 'barber'),
+          employee_id: mapping.employee_id || null,
+          barber_id: mapping.barber_id || null,
+        });
       }
     }
   }
 
-  // Fetch updated identities & workforce
-  const [empRes, barRes, idnRes] = await Promise.all([
-    supabase.from('employees').select('id, employee_code, name, nickname, position, branch, business_unit').eq('is_active', true),
-    supabase.from('barbers').select('id, name, branch').eq('is_active', true),
-    supabase.from('employee_attendance_identity').select('*').eq('source', 'fingerprint'),
-  ]);
-  const dbEmployees = empRes.data || [];
-  const dbBarbers = barRes.data || [];
-  const existingIdentities = idnRes.data || [];
-
   const { matched, unmatched, rejected } = matchEmployees({
     fileEmployees,
-    dbEmployees,
-    dbBarbers,
-    existingIdentities,
+    ...ctx,
+    machineSource,
   });
 
   const matchedMap = new Map();
@@ -521,6 +937,12 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
     matchedMap.set(m.external_employee_id, m);
   }
   const rejectedIds = new Set(rejected.map(r => r.external_employee_id));
+  const activity = summarizeActivity(dailyRecords);
+  const hasPunches = (id) => (activity.get(id)?.total_punches || 0) > 0;
+  const isPrimaryMachineUser = (id) => {
+    const a = activity.get(id);
+    return !!a && a.records > 0 && a.days_with_punch / a.records >= PRIMARY_MACHINE_MIN_PUNCH_DAY_RATIO;
+  };
 
   // Create or update import batch
   const { data: batch, error: batchErr } = await supabase
@@ -535,6 +957,7 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
       rows_detected: dailyRecords.length,
       metadata: {
         format: parsedData.format,
+        machine_source: normalizeMachineSource(machineSource),
         employees_detected: fileEmployees.length,
         matched: matched.length,
         unmatched: unmatched.length,
@@ -556,21 +979,29 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   let importedCount = 0;
   let skippedCount = 0;
   let exceptionsCount = 0;
+  let rowsInserted = 0;
+  let rowsUpdated = 0;
 
-  const employeeAttendanceRows = [];
+  const employeeAttendanceMap = new Map(); // employee_id|date -> row
   const barberAttendanceRows = [];
   const exceptionRows = [];
 
   for (const record of dailyRecords) {
+    // Terminated identities: reject silently (no attendance, no exception)
     if (rejectedIds.has(record.external_employee_id)) {
       skippedCount++;
       continue;
     }
 
     const match = matchedMap.get(record.external_employee_id);
+    const punches = record.raw_punches || [];
 
-    // Case 1: Unmatched Employee -> goes to Exception Review
+    // Case 1: Unmatched -> Exception Review, only for days that have punch evidence
     if (!match) {
+      if (punches.length === 0) {
+        skippedCount++;
+        continue;
+      }
       exceptionRows.push({
         import_batch_id: batchId,
         attendance_date: record.attendance_date,
@@ -586,10 +1017,16 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
       continue;
     }
 
+    // No punch at all in the period, or a sporadic identity's zero-punch day: no
+    // evidence, do not fabricate absent/off rows (the person likely uses another source).
+    if (!hasPunches(record.external_employee_id) || (punches.length === 0 && !isPrimaryMachineUser(record.external_employee_id))) {
+      skippedCount++;
+      continue;
+    }
+
     const derivedStatus = deriveAttendanceStatus(record);
 
     // Check for single punch anomaly
-    const punches = record.raw_punches || [];
     if (punches.length === 1) {
       exceptionRows.push({
         import_batch_id: batchId,
@@ -599,14 +1036,14 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         department: record.department || null,
         exception_type: 'single_punch',
         details: `Hanya ditemukan 1 punch jam ${punches[0]}. Missing check-in / check-out.`,
-        raw_data: record,
+        raw_data: { ...record, employee_id: match.employee_id || null, barber_id: match.barber_id || null },
         status: 'pending',
       });
       exceptionsCount++;
     }
 
     if (match.target_type === 'employee') {
-      employeeAttendanceRows.push({
+      const row = {
         employee_id: match.employee_id,
         attendance_date: record.attendance_date,
         first_check_in: record.first_check_in,
@@ -615,13 +1052,22 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         late_minutes: record.late_minutes || 0,
         early_leave_minutes: record.early_leave_minutes || 0,
         overtime_minutes: 0,
-        raw_punches: record.raw_punches || [],
+        raw_punches: punches,
         source: 'fingerprint',
         import_batch_id: batchId,
         notes: record.notes || null,
         updated_at: new Date().toISOString(),
-      });
-    } else if (match.target_type === 'barber') {
+      };
+      const key = `${row.employee_id}|${row.attendance_date}`;
+      const prev = employeeAttendanceMap.get(key);
+      if (prev) {
+        // Same person enrolled twice on this machine: union the evidence.
+        const merged = mergeAttendanceRecords(prev, row);
+        employeeAttendanceMap.set(key, { ...row, ...merged, employee_id: row.employee_id, attendance_date: row.attendance_date });
+      } else {
+        employeeAttendanceMap.set(key, row);
+      }
+    } else if (match.target_type === 'barber' && punches.length > 0) {
       barberAttendanceRows.push({
         barber_id: match.barber_id,
         date: record.attendance_date,
@@ -630,6 +1076,35 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         updated_at: new Date().toISOString(),
       });
     }
+  }
+
+  // Merge with rows already in DB (other machines / earlier imports) so real
+  // punch evidence is never degraded. Idempotent: re-importing the same file
+  // unions identical punches.
+  let employeeAttendanceRows = [...employeeAttendanceMap.values()];
+  if (employeeAttendanceRows.length > 0) {
+    const empIds = [...new Set(employeeAttendanceRows.map(r => r.employee_id))];
+    const existingRows = await fetchExistingAttendance(supabase, empIds, period.from, period.to);
+    const existingMap = new Map(existingRows.map(r => [`${r.employee_id}|${r.attendance_date}`, r]));
+    employeeAttendanceRows = employeeAttendanceRows.map(row => {
+      const ex = existingMap.get(`${row.employee_id}|${row.attendance_date}`);
+      if (!ex) { rowsInserted++; return row; }
+      rowsUpdated++;
+      const merged = mergeAttendanceRecords({ ...ex, raw_punches: ex.raw_punches || [] }, row);
+      return {
+        ...row,
+        first_check_in: merged.first_check_in ?? row.first_check_in,
+        last_check_out: merged.last_check_out ?? row.last_check_out,
+        status: merged.status || row.status,
+        late_minutes: merged.late_minutes ?? row.late_minutes,
+        raw_punches: merged.raw_punches || row.raw_punches,
+        // Fingerprint files never carry an authoritative overtime value (they always report 0 here);
+        // preserve whatever overtime_minutes the existing row already had (computed/approved
+        // elsewhere) instead of clobbering it with the freshly-parsed row's default 0
+        // (PRRT_kwDOSNmW7c6kYVyb). A genuinely new row (no existing DB record) legitimately starts at 0.
+        overtime_minutes: ex.overtime_minutes ?? row.overtime_minutes,
+      };
+    });
   }
 
   // Write regular employee attendance (idempotent upsert)
@@ -648,24 +1123,108 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   if (barberAttendanceRows.length > 0) {
     const barberDates = barberAttendanceRows.map(r => r.date);
     const barberIds = [...new Set(barberAttendanceRows.map(r => r.barber_id))];
-    const { data: existingBarberAtt } = await supabase
+    const { data: existingBarberAtt, error: barberAttErr } = await supabase
       .from('barber_attendance')
       .select('barber_id, date')
       .in('barber_id', barberIds)
       .in('date', barberDates);
+    if (barberAttErr) {
+      const err = new Error(`Gagal membaca presensi barber existing: ${barberAttErr.message}`);
+      err.code = 'BARBER_ATTENDANCE_READ_FAILED';
+      throw err;
+    }
 
     const existingSet = new Set((existingBarberAtt || []).map(r => `${r.barber_id}|${r.date}`));
-    const newBarberRows = barberAttendanceRows.filter(r => !existingSet.has(`${r.barber_id}|${r.date}`));
+    const seen = new Set();
+    const newBarberRows = barberAttendanceRows.filter(r => {
+      const k = `${r.barber_id}|${r.date}`;
+      if (existingSet.has(k) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
 
     if (newBarberRows.length > 0) {
-      await supabase.from('barber_attendance').insert(newBarberRows);
+      const { error: barInsertErr } = await supabase.from('barber_attendance').insert(newBarberRows);
+      if (barInsertErr) {
+        const err = new Error(`Gagal menyimpan presensi barber: ${barInsertErr.message}`);
+        err.code = 'BARBER_ATTENDANCE_WRITE_FAILED';
+        throw err;
+      }
       importedCount += newBarberRows.length;
     }
   }
 
-  // Write exceptions
-  if (exceptionRows.length > 0) {
-    await supabase.from('attendance_exceptions').insert(exceptionRows);
+  // Persist deterministic machine-scoped identities (audit + stable future imports)
+  let identitiesSaved = 0;
+  if (normalizeMachineSource(machineSource)) {
+    const newIdentities = matched
+      .filter(m => m.match_type !== 'identity_mapping' && hasPunches(m.external_employee_id))
+      .map(m => ({
+        source: identitySource,
+        external_employee_id: m.external_employee_id,
+        external_name: m.external_name || null,
+        target_type: m.target_type,
+        employee_id: m.employee_id || null,
+        barber_id: m.barber_id || null,
+        updated_at: new Date().toISOString(),
+      }));
+    if (newIdentities.length > 0) {
+      const { error: idnErr } = await supabase
+        .from('employee_attendance_identity')
+        .upsert(newIdentities, { onConflict: 'source,external_employee_id' });
+      if (idnErr) {
+        const err = new Error(`Gagal menyimpan identitas mesin: ${idnErr.message}`);
+        err.code = 'IDENTITY_MAPPING_WRITE_FAILED';
+        throw err;
+      }
+      identitiesSaved = newIdentities.length;
+    }
+  }
+
+  // Write exceptions (idempotent: skip ones already pending for the same machine identity/day/type)
+  const machineKey = normalizeMachineSource(machineSource);
+  const excKey = (e, machine) => `${machine || ''}|${e.external_employee_id}|${e.attendance_date}|${e.exception_type}`;
+  let newExceptionRows = exceptionRows.map(e => ({ ...e, raw_data: { ...(e.raw_data || {}), machine_source: machineKey } }));
+  if (newExceptionRows.length > 0) {
+    const externalIds = [...new Set(newExceptionRows.map(e => e.external_employee_id))];
+    const existingExc = await fetchPendingExceptions(supabase, externalIds, period.from, period.to);
+    const existingKeys = new Set(existingExc.map(e => excKey(e, e.raw_data?.machine_source)));
+    newExceptionRows = newExceptionRows.filter(e => !existingKeys.has(excKey(e, machineKey)));
+  }
+  if (newExceptionRows.length > 0) {
+    const { error: excErr } = await supabase.from('attendance_exceptions').insert(newExceptionRows);
+    if (excErr) {
+      if (batchId) {
+        await supabase
+          .from('attendance_import_batches')
+          .update({
+            status: 'failed',
+            rows_imported: importedCount,
+            rows_skipped: skippedCount,
+            rows_failed: newExceptionRows.length,
+            metadata: {
+              ...(batch?.metadata || {}),
+              error: excErr.message,
+              error_code: 'ATTENDANCE_EXCEPTION_WRITE_FAILED',
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', batchId);
+      }
+      const err = new Error(`Gagal menyimpan anomali absensi ke database: ${excErr.message}`);
+      err.code = 'ATTENDANCE_EXCEPTION_WRITE_FAILED';
+      err.partial_success = importedCount > 0;
+      err.imported_count = importedCount;
+      throw err;
+    }
+  }
+  exceptionsCount = newExceptionRows.length;
+
+  // Reconcile stale pending single_punch exceptions now that the canonical attendance rows are
+  // written (PRRT_kwDOSNmW7c6kYVyo). Runs after this batch's own exception dedup so it never
+  // interferes with that read. Best-effort: never fails an import that already succeeded.
+  if (employeeAttendanceRows.length > 0) {
+    await reconcileStaleSinglePunchExceptions(supabase, employeeAttendanceRows, period.from, period.to);
   }
 
   const finalStatus = exceptionRows.length > 0 ? 'partial' : 'completed';
@@ -685,12 +1244,17 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
     batch_id: batchId,
     status: finalStatus,
     period,
+    machine_source: normalizeMachineSource(machineSource),
     employees_detected: fileEmployees.length,
     matched_count: matched.length,
     unmatched_count: unmatched.length,
     rejected_count: rejected.length,
     rows_imported: importedCount,
+    rows_inserted: rowsInserted,
+    rows_updated: rowsUpdated,
+    rows_skipped: skippedCount,
     rows_exceptions: exceptionsCount,
+    identities_saved: identitiesSaved,
     message: finalStatus === 'completed'
       ? 'Impor absensi fingerprint berhasil diselesaikan.'
       : `Impor selesai sebagian: ${importedCount} baris tersimpan, ${exceptionsCount} exception memerlukan review.`,
@@ -716,6 +1280,19 @@ module.exports = {
   extractDailyPunches,
   matchEmployees,
   deriveAttendanceStatus,
+  mergeAttendanceRecords,
+  fetchExistingAttendance,
+  fetchPendingExceptions,
+  fetchPendingSinglePunchExceptions,
+  reconcileStaleSinglePunchExceptions,
+  buildIdentityReport,
+  identitySourceFor,
+  exceptionNamespaces,
+  normalizeMachineSource,
+  requireKnownMachineSource,
+  FINGERPRINT_MACHINES,
+  TERMINATED_NAMES,
+  PRIMARY_MACHINE_MIN_PUNCH_DAY_RATIO,
   previewImport,
   commitImport,
 };

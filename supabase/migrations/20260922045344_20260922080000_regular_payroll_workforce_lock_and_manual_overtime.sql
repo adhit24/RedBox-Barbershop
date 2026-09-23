@@ -1,0 +1,9 @@
+-- Migration history alignment only.
+--
+-- Supabase MCP recorded remote migration version 20260922045344 when applying the
+-- already-versioned migration 20260922080000_regular_payroll_workforce_lock_and_manual_overtime.
+-- The business DDL is contained in 20260922080000_regular_payroll_workforce_lock_and_manual_overtime.sql
+-- and is already applied in production.
+--
+-- This file is intentionally comments-only. Do not add DDL here, do not replay the business migration,
+-- and do not delete or rewrite remote migration history.

@@ -102,6 +102,23 @@ function extractEmployees(workbook) {
 }
 
 /**
+ * Maps day-of-month -> full date for the report period. Periods may span two
+ * months (e.g. 2026-08-26 ~ 2026-09-20), so the month cannot be taken from
+ * period.from alone. Days outside the period are absent from the map.
+ */
+function buildDayToDateMap(period) {
+  const map = new Map();
+  const start = new Date(`${period.from}T00:00:00Z`);
+  const end = new Date(`${period.to}T00:00:00Z`);
+  for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
+    const iso = new Date(t).toISOString().slice(0, 10);
+    const day = parseInt(iso.slice(8, 10), 10);
+    if (!map.has(day)) map.set(day, iso);
+  }
+  return map;
+}
+
+/**
  * Extracts daily records & punches from Standard Flat Report.
  */
 function extractDailyPunches(workbook, period) {
@@ -119,7 +136,7 @@ function extractDailyPunches(workbook, period) {
       }
     }
 
-    const yearMonth = period.from.slice(0, 7); // e.g. "2026-08"
+    const dateByDay = buildDayToDateMap(period);
 
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r] || [];
@@ -131,8 +148,8 @@ function extractDailyPunches(workbook, period) {
           if (!cellVal) continue;
           const dayNum = parseInt(dayCols[c], 10);
           if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) continue;
-          const dayStr = String(dayNum).padStart(2, '0');
-          const dateStr = `${yearMonth}-${dayStr}`;
+          const dateStr = dateByDay.get(dayNum);
+          if (!dateStr) continue;
 
           const matches = cellVal.match(timeRegex);
           if (matches && matches.length > 0) {

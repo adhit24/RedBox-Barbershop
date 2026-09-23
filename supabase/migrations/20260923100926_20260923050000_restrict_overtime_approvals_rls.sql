@@ -1,0 +1,9 @@
+-- Migration history alignment only.
+--
+-- Supabase MCP recorded remote migration version 20260923100926 when applying the
+-- already-versioned migration 20260923050000_restrict_overtime_approvals_rls.
+-- The business DDL is contained in 20260923050000_restrict_overtime_approvals_rls.sql
+-- and is already applied in production.
+--
+-- This file is intentionally comments-only. Do not add DDL here, do not replay the business migration,
+-- and do not delete or rewrite remote migration history.
