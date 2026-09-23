@@ -1625,7 +1625,7 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
 async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {}) {
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
-    .select('id, status, payroll_type, period_start, period_end')
+    .select('id, status, payroll_type, period_start, period_end, summary')
     .eq('id', runId)
     .single();
   if (runErr || !run) {
@@ -1638,6 +1638,14 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     err.code = 'RUN_NOT_DRAFT';
     throw err;
   }
+
+  // Coverage basis persisted by the LAST refreshRunSummary/generateRegularPayrollDraft call, captured
+  // BEFORE population reconciliation or any recalculation touches it (Round-17, PRRT_kwDOSNmW7c6ksqma).
+  // This is the "old" side of the old-vs-new run coverage comparison below.
+  const previousCoverage = {
+    attendance_data_through: run.summary?.attendance_data_through ?? null,
+    attendance_period_complete: Boolean(run.summary?.attendance_period_complete),
+  };
 
   // 0. Reconcile the item population against the CURRENT eligible-employee population BEFORE
   // recalculating existing items (P1-2, PRRT_kwDOSNmW7c6kkm1X): brings in employees who became
@@ -1663,12 +1671,25 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     employeeIds: allEmployeeIds,
   });
 
+  // 1b. Old-vs-new run coverage comparison (Round-17, PRRT_kwDOSNmW7c6ksqma). ALL payroll items in one
+  // run must be calculated from the SAME authoritative run-wide coverage basis: a clean/READY item's OWN
+  // attendance_source_revision never changes just because a DIFFERENT employee's insertion or attendance
+  // moved the run-wide cutoff, so per-item dirty/revision flags alone cannot detect this. Any meaningful
+  // change to the authoritative coverage -- in EITHER direction (advance or regression) -- invalidates
+  // every existing item's calculation, not only the newly inserted/dirty ones.
+  const coverageChanged =
+    previousCoverage.attendance_data_through !== (runCoverage.attendance_data_through ?? null) ||
+    previousCoverage.attendance_period_complete !== Boolean(runCoverage.attendance_period_complete);
+
   // 2. Recalculate affected/all payroll items. A freshly inserted employee is always included in
   // this request, even when the initial insert snapshot looks clean, so population reconciliation
-  // and item reconciliation form one ordered path before the final run summary is written.
+  // and item reconciliation form one ordered path before the final run summary is written. When the
+  // authoritative run-wide coverage itself changed, EVERY item in the run is stale by definition and
+  // must be recalculated against the SAME final runCoverage, regardless of its own dirty/revision state.
   const insertedEmployeeIds = new Set(population.inserted || []);
   const targets = (items || []).filter(
     (i) => all ||
+           coverageChanged ||
            insertedEmployeeIds.has(i.employee_id) ||
            i.attendance_summary?.attendance_dirty === true ||
            i.attendance_summary?.adjustments_dirty === true ||
