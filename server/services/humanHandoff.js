@@ -425,7 +425,7 @@ async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
  * Safe reconciliation for existing handoff cases (P1-F).
  * Does NOT blindly auto-resolve unproven cases.
  * Classifies:
- * - already_resolved_indirectly: if customer completed later booking
+ * A later booking is not evidence that the original issue was resolved.
  * - stale: open > SLA threshold without verified resolution -> keeps open + escalates
  * - still_actionable: open within normal SLA window
  */
@@ -468,35 +468,6 @@ async function reconcileHandoffBacklog(deps = {}) {
     const isBreached = ageMinutes >= slaLimitMinutes;
 
     if (isBreached) {
-      // Check if customer completed a booking after this handoff
-      let resolvedIndirectly = false;
-      try {
-        const { data: laterBookings } = await supabase
-          .from('bookings')
-          .select('id, status, created_at')
-          .eq('customer_phone', c.customer_phone)
-          .eq('status', 'confirmed')
-          .gte('created_at', c.created_at)
-          .limit(1);
-        if (Array.isArray(laterBookings) && laterBookings.length > 0) {
-          resolvedIndirectly = true;
-        }
-      } catch (_bErr) {}
-
-      if (resolvedIndirectly) {
-        updates.status = 'resolved';
-        updates.resolved_at = new Date().toISOString();
-        needsUpdate = true;
-        summary.already_resolved_indirectly += 1;
-        try {
-          await recordFn({
-            event_type: 'handoff_resolved',
-            branch: c.branch,
-            handoff_case_id: c.id,
-            metadata: { resolution_type: 'indirect_booking_completed', age_minutes: ageMinutes },
-          }, deps);
-        } catch (_e) {}
-      } else {
         // Stale unproven case: DO NOT mark resolved. Keep open and escalate!
         summary.stale_escalated += 1;
         try {
@@ -514,7 +485,6 @@ async function reconcileHandoffBacklog(deps = {}) {
             metadata: { escalation_reason: 'sla_breached_unresolved', age_minutes: ageMinutes },
           }, deps);
         } catch (_e) {}
-      }
     } else {
       summary.still_actionable += 1;
     }
@@ -550,3 +520,4 @@ module.exports = {
   reconcileHandoffBacklog,
   recordedSlaBreaches,
 };
+

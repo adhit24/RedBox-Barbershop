@@ -23,7 +23,6 @@ const { isOnBookableGrid, filterToBookableGrid } = require('./bookableSlotGrid')
  * couldn't actually select on the booking website.
  */
 
-const DEFAULT_DURATION_MINUTES = 30; // base outlet slot granularity; used when no service is specified
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Accept UUID or slug, return outlet UUID (or null if not found). Mirrors moka/routes.js's private _resolveOutletId. */
@@ -56,14 +55,18 @@ function nowIso() {
  * @param {string} params.date              - 'YYYY-MM-DD'
  * @param {string} [params.time]            - 'HH:mm', for a specific-time check
  * @param {{start:string,end:string}} [params.timeRange] - 'HH:mm' bounds, used as a search filter only
- * @param {number} [params.durationMinutes] - service duration; defaults to base outlet granularity
+ * @param {string} params.serviceId - active canonical service identity
+ * @param {number} params.durationMinutes - duration resolved from that service
  * @returns {Promise<object>} structured, PII-safe result (see spec §11)
  */
 async function checkBarberAvailability(supabase, {
-  branch, barberId = null, date, time = null, timeRange = null, durationMinutes = null,
+  branch, barberId = null, date, time = null, timeRange = null, durationMinutes = null, serviceId = null,
 } = {}) {
   if (!supabase || !branch || !date) {
     return { success: false, reason_code: 'invalid_date' };
+  }
+  if (!serviceId || !Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+    return { success: false, reason_code: 'service_required' };
   }
 
   let outlet;
@@ -76,7 +79,7 @@ async function checkBarberAvailability(supabase, {
     return { success: false, reason_code: 'branch_not_found' };
   }
 
-  const duration = Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : DEFAULT_DURATION_MINUTES;
+  const duration = durationMinutes;
 
   if (barberId) {
     return checkSingleBarber(supabase, {
@@ -245,3 +248,4 @@ function nearestSlots(bookableTimes, requestedTime, count) {
 }
 
 module.exports = { checkBarberAvailability };
+

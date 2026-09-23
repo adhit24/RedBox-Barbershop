@@ -88,6 +88,9 @@ function describeAvailabilityDate(date) {
  * guessed — and never claims a slot is reserved/held/locked.
  */
 function buildAvailabilityReply({ mode, barberName, availability }) {
+  if (availability?.reason_code === 'service_required') {
+    return 'Kak mau layanan apa? Aku perlu durasi layanannya untuk mengecek slot yang sesuai.';
+  }
   if (!availability?.success) {
     return `Aku belum bisa baca jadwal live-nya sebentar ini kak. Buat memastikan slotnya, cek langsung di booking Redbox ya:\n${BOOKING_URL}`;
   }
@@ -314,11 +317,28 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     supabase = null,
     loadBarbers = loadCanonicalBarbers,
     getSchedule = getBarberScheduleStatus,
-    getAvailability = checkBarberAvailability,
+    getAvailability: lookupAvailability = checkBarberAvailability,
     logBookingTelemetry = logOrchestratedEvent,
     logAvailability = logAvailabilityQueryEvent,
     persistConversation = null,
   } = dependencies;
+
+  const getAvailability = async (db, query) => {
+    const { getActiveServicesCatalog, findServiceRow, resolveAllServiceMentions } = require('../../services/servicesCatalog');
+    const rows = await getActiveServicesCatalog(db);
+    const mentions = resolveAllServiceMentions(text, rows || []);
+    const remembered = extractBookingContext(text,
+      reconstructBookingContextFromTurns(conversationContext?.turns || [], {
+        sessionStatus: conversationContext?.sessionStatus,
+      }));
+    const service = mentions.length === 1 ? mentions[0].row
+      : (mentions.length === 0 && remembered.service?.name && rows
+        ? findServiceRow(rows, { name: remembered.service.name }) : null);
+    if (!rows || !service?.id || !(service.duration_minutes > 0)) {
+      return { success: false, reason_code: 'service_required' };
+    }
+    return lookupAvailability(db, { ...query, serviceId: service.id, durationMinutes: service.duration_minutes });
+  };
 
   if (!callOpenAI || typeof callOpenAI !== 'function') {
     throw new Error('callOpenAI dependency function required for Reddy execution');
@@ -978,3 +998,4 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 }
 
 module.exports = { executeReddyAgent, classifyBarberPresenceQuery };
+

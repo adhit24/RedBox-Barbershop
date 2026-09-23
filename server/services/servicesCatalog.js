@@ -106,8 +106,10 @@ async function getActiveServicesCatalog(supabase, options = {}) {
         cache = { rows, fetchedAt: Date.now() };
         return rows;
       }
-      // Fetch failed: serve stale cache if we have any, otherwise null.
-      return cache.rows || null;
+      // Expired data cannot authorize a current price or service duration.
+      return null;
+    } catch (_error) {
+      return null;
     } finally {
       inflight = null;
     }
@@ -285,3 +287,4 @@ module.exports = {
   formatIDR,
   DEFAULT_TTL_MS,
 };
+

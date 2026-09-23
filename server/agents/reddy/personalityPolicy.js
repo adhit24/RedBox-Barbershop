@@ -324,11 +324,14 @@ function resolveServiceIdentity({ serviceId, serviceName, text }) {
 // placeholder shape (those are all-letters like XX/TBD/N/A and are handled,
 // separately, by guardPricePlaceholders above).
 function extractConcreteRupiahMentions(text) {
-  const regex = /Rp\s?([0-9][0-9.,]{2,})\b/gi;
+  const regex = /\b(?:Rp\s*([0-9](?:[0-9.,]*[0-9])?)(?:\s*(ribu|rb|k))?|([0-9]+(?:[.,][0-9]+)?)\s*(ribu|rb|k))\b/gi;
   const mentions = [];
   let match;
   while ((match = regex.exec(text)) !== null) {
-    const numeric = Number.parseInt(match[1].replace(/[.,]/g, ''), 10);
+    const amount = match[1] || match[3];
+    const numeric = (match[2] || match[4])
+      ? Number(amount.replace(',', '.')) * 1000
+      : Number.parseInt(amount.replace(/[.,]/g, ''), 10);
     if (Number.isFinite(numeric) && numeric > 0) {
       mentions.push({ raw: match[0], numeric, index: match.index });
     }
@@ -352,14 +355,14 @@ function extractDurationMentions(text) {
 // Contexts involving historical bookings, past transactions, previous prices,
 // comparisons ("dulu... sekarang..."), refunds, or disputes must NEVER have their
 // historical quotes corrupted by current catalog numbers or service renamings.
-const HISTORICAL_OR_DISPUTE_CONTEXT_REGEX = /\b(dulu|dahulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu|komplain|complaint|dispute|refund|selisih|beda\s+harga)\b/i;
+const HISTORICAL_OR_DISPUTE_CONTEXT_REGEX = /\b(dulu|dahulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu)\b/i;
 
 // Current context markers to distinguish mixed historical + current statements
 const CURRENT_CONTEXT_REGEX = /\b(sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya|terbaru|yang\s+berlaku|harga\s+baru|layanan\s+baru|booking\s+baru|transaksi\s+baru)\b/i;
 
 function getClauseForSpan(text, spanIndex, spanLength = 0) {
   if (typeof text !== 'string' || !text) return { clauseText: '', start: 0, end: 0 };
-  const boundaryRegex = /(?:(?<!\d)\.(?!\d)|[!?;\n\r]|,|(?:\b(?:namun|tetapi|tapi|sedangkan|sementara|padahal|adapun)\b)|(?:\b(?:sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya)\b))/gi;
+  const boundaryRegex = /(?:(?<!\d)\.(?!\d)|(?<=\d)\.(?=\s|$)|[!?;\n\r]|,|(?:\b(?:namun|tetapi|tapi|sedangkan|sementara|padahal|adapun)\b)|(?:\b(?:sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya)\b))/gi;
   let clauseStart = 0;
   let clauseEnd = text.length;
   let match;
@@ -408,9 +411,9 @@ function isHistoricalSpan(text, spanIndex, spanLength = 0) {
 /**
  * Blocks/corrects an outbound reply that states a concrete price or
  * duration disagreeing with the live public.services row (is_active=true).
- * Fails OPEN (does not block) whenever the service or the live catalog
- * cannot be resolved unambiguously — this guard corrects known-wrong
- * numbers, it does not invent numbers for identities it cannot verify.
+ * Current prices fail closed when their service or catalog is unavailable.
+ * Bound service figures retain canonical correction; historical quotations
+ * are preserved rather than rewritten as current prices.
  *
  * Segment-aware: preserves historical quotes in past booking/comparison clauses,
  * while validating and correcting current service figures.
@@ -438,6 +441,11 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
+  const unverifiedPrice = () => ({
+    sanitizedReply: 'Aku belum bisa mencocokkan nominal itu dengan layanan resmi, Kak. Boleh sebutkan nama layanan atau kirim bukti transaksi agar perbedaannya bisa diperiksa?',
+    blocked: true, action: 'blocked_unverified',
+    mismatches: currentPriceMentions.map(m => ({ type: 'price', attempted: m.numeric, expected: null, serviceId: null })),
+  });
   let rows = null;
   try {
     const { getActiveServicesCatalog } = require('../../services/servicesCatalog');
@@ -446,10 +454,30 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
     rows = null;
   }
   if (!rows || !Array.isArray(rows) || rows.length === 0) {
-    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+    return currentPriceMentions.length ? unverifiedPrice() : { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
   const { findServiceRow, resolveAllServiceMentions } = require('../../services/servicesCatalog');
+
+  // Every current service price needs a claim-local identity. A service in
+  // another sentence must not authorize an invented package or comparison.
+  // Public membership prices have their own canonical authority.
+  const { REDBOX_KNOWLEDGE } = require('./knowledge/redboxKnowledge');
+  const publicPriceIndexes = new Set();
+  for (const mention of currentPriceMentions) {
+    const clause = getClauseForSpan(replyText, mention.index, mention.raw.length).clauseText;
+    const tier = (REDBOX_KNOWLEDGE.membership_public?.tiers || []).find(t =>
+      new RegExp(`\\b${t.id}\\b`, 'i').test(clause) && t.price_idr === mention.numeric);
+    if (tier && !/wedding/i.test(clause)) { publicPriceIndexes.add(mention.index); continue; }
+    const local = resolveAllServiceMentions(clause, rows);
+    const explicit = options.serviceId && findServiceRow(rows, { id: options.serviceId });
+    if (!local.length && !explicit) return unverifiedPrice();
+    if (local.length > 1 && extractConcreteRupiahMentions(clause).length > 1) return unverifiedPrice();
+  }
+  // Keep membership figures out of service-price corrections.
+  for (let i = currentPriceMentions.length - 1; i >= 0; i--) {
+    if (publicPriceIndexes.has(currentPriceMentions[i].index)) currentPriceMentions.splice(i, 1);
+  }
 
   // Detect all services mentioned across the reply text
   const detectedMentions = resolveAllServiceMentions(replyText, rows);
@@ -844,3 +872,4 @@ module.exports = {
   canUseCustomerName,
   resolveServiceIdentity,
 };
+

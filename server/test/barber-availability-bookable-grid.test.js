@@ -2,8 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+// Pin the clock before opening: assertions about morning slots must not
+// depend on the machine's current hour or the online lead-time filter.
+test.mock.method(Date, 'now', () => Date.parse('2026-09-23T01:00:00Z'));
+test.after(() => test.mock.restoreAll());
 
 const { checkBarberAvailability } = require('../services/barberAvailabilityQuery');
+// Explicit selected service fixture; availability no longer guesses a duration.
+const SERVICE = { serviceId: 'traditional-shaving', durationMinutes: 30 };
 const { getOutletBookableGrid, isOnBookableGrid, filterToBookableGrid } = require('../services/bookableSlotGrid');
 
 /**
@@ -101,7 +107,7 @@ test('Case 1: production bug reproduction — 19:00 busy, reported alternatives 
       status: 'confirmed',
     }],
   }));
-  const result = await checkBarberAvailability(supabase, { branch: 'csb', barberId: UBAY.id, date: TODAY, time: '19:00', durationMinutes: 30 });
+  const result = await checkBarberAvailability(supabase, { ...SERVICE, branch: 'csb', barberId: UBAY.id, date: TODAY, time: '19:00', durationMinutes: 30 });
   assert.equal(result.available, false);
   assert.ok(!result.off_grid, '19:00 itself is a valid grid position, not off_grid');
   for (const alt of result.alternative_slots) {
@@ -114,7 +120,7 @@ test('Case 1: production bug reproduction — 19:00 busy, reported alternatives 
 
 test('Case 2: direct half-hour request ("Ubay jam 10:30 bisa?") is never reported as bookable', async () => {
   const supabase = makeSupabase(baseTables({ workingHours: FULL_DAY_HOURS }));
-  const result = await checkBarberAvailability(supabase, { branch: 'csb', barberId: UBAY.id, date: TODAY, time: '10:30', durationMinutes: 30 });
+  const result = await checkBarberAvailability(supabase, { ...SERVICE, branch: 'csb', barberId: UBAY.id, date: TODAY, time: '10:30', durationMinutes: 30 });
   assert.equal(result.available, false);
   assert.equal(result.off_grid, true);
   assert.ok(result.alternative_slots.every((t) => isOnBookableGrid(t)));
@@ -123,7 +129,7 @@ test('Case 2: direct half-hour request ("Ubay jam 10:30 bisa?") is never reporte
 
 test('Case 3: ordinary hourly request ("Ubay jam 11:00 bisa?") — normal live check, unaffected', async () => {
   const supabase = makeSupabase(baseTables({ workingHours: FULL_DAY_HOURS }));
-  const result = await checkBarberAvailability(supabase, { branch: 'csb', barberId: UBAY.id, date: TODAY, time: '11:00', durationMinutes: 30 });
+  const result = await checkBarberAvailability(supabase, { ...SERVICE, branch: 'csb', barberId: UBAY.id, date: TODAY, time: '11:00', durationMinutes: 30 });
   assert.equal(result.available, true);
   assert.ok(!result.off_grid);
 });
@@ -138,7 +144,7 @@ test('Case 4: Moka overlap spanning a half-hour boundary never exposes the half-
       status: 'confirmed', source: 'moka',
     }],
   }));
-  const result = await checkBarberAvailability(supabase, { branch: 'csb', barberId: UBAY.id, date: TODAY, durationMinutes: 30 });
+  const result = await checkBarberAvailability(supabase, { ...SERVICE, branch: 'csb', barberId: UBAY.id, date: TODAY, durationMinutes: 30 });
   assert.ok(!result.available_slots.includes('11:30'), '11:30 must never appear — not a valid grid position');
   assert.ok(!result.available_slots.includes('11:00'), '11:00 hourly slot overlaps the Moka busy block and must be excluded');
   assert.ok(result.available_slots.every((t) => isOnBookableGrid(t)));
@@ -146,7 +152,7 @@ test('Case 4: Moka overlap spanning a half-hour boundary never exposes the half-
 
 test('Case 5: parity — every slot barberAvailabilityQuery.js returns is a subset of the canonical bookable grid', async () => {
   const supabase = makeSupabase(baseTables({ workingHours: FULL_DAY_HOURS }));
-  const result = await checkBarberAvailability(supabase, { branch: 'csb', barberId: UBAY.id, date: TODAY, durationMinutes: 30 });
+  const result = await checkBarberAvailability(supabase, { ...SERVICE, branch: 'csb', barberId: UBAY.id, date: TODAY, durationMinutes: 30 });
   const grid = new Set(getOutletBookableGrid());
   for (const slot of result.available_slots) {
     assert.ok(grid.has(slot), `"${slot}" is not on the canonical bookable grid — website/Reddy parity violated`);
@@ -163,7 +169,8 @@ test('live production scenario reproduction: CSB/Ubay/today/19:00 — no :30 slo
       status: 'confirmed',
     }],
   }));
-  const result = await checkBarberAvailability(supabase, { branch: 'csb', barberId: UBAY.id, date: TODAY, time: '19:00', durationMinutes: 30 });
+  const result = await checkBarberAvailability(supabase, { ...SERVICE, branch: 'csb', barberId: UBAY.id, date: TODAY, time: '19:00', durationMinutes: 30 });
   const serialized = JSON.stringify(result);
   assert.ok(!/:\d\d?:30"/.test(serialized) && !serialized.includes(':30"'), `result must contain no half-hour time anywhere: ${serialized}`);
 });
+

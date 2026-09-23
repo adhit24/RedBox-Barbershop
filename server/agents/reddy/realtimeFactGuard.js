@@ -398,6 +398,16 @@ function guardRealtimeBarberFacts(reply, options = {}) {
   let workingReply = locPayGuard.sanitizedReply;
   let locPayTriggered = locPayGuard.triggered;
 
+  // Model text has no slot-engine authority. Replace the whole answer so
+  // removing a presence sentence cannot leave its fabricated time list.
+  const hasSlotClaim = /\b(slot|kosong|tersedia|available|free)\b/i.test(workingReply)
+    && /(?:\b[0-2]?\d[:.]\d{2}\b|\b\d+\s*slot\b|\bslot\s+(?:jam|pukul)\s*\d)/i.test(workingReply);
+  if (hasSlotClaim) {
+    return { sanitizedReply: buildSafeStatement(verifiedSchedule, {
+      availabilityAttempted: true, responseLanguage,
+    }), triggered: true };
+  }
+
   const sentences = splitIntoSentences(workingReply);
   const boundBarberNames = [...knownBarberNames, verifiedSchedule?.barberName].filter(Boolean);
   const violatingSentences = forceSafeResponse
@@ -448,3 +458,4 @@ module.exports = {
   namedBarberClaim,
   namedBarberClaimType,
 };
+

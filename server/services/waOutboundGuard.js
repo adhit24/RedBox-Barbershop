@@ -67,6 +67,22 @@ async function markOutboundResult(supabase, { inboundEventId, claimId, sent }) {
   } catch (_error) { /* reservation already prevents duplicates; bookkeeping is best effort */ }
 }
 
+// RPCs own the state transition. Enrich only their terminal row; never move
+// a sending/sent row to failed when a competing invocation is suppressed.
+async function recordTerminalProvenance(supabase, inboundEventId, status, reason, correlationId) {
+  if (!supabase || !inboundEventId) return;
+  try {
+    const { error } = await supabase.from('wa_inbound_events').update({
+      failure_reason: reason,
+      terminal_source: 'wa_outbound_guard',
+      correlation_id: correlationId || inboundEventId,
+    }).eq('id', inboundEventId).eq('processing_status', status).is('terminal_source', null);
+    if (error) console.warn('[WA outbound] terminal provenance write failed:', error.code || 'unknown');
+  } catch (_error) {
+    console.warn('[WA outbound] terminal provenance write failed');
+  }
+}
+
 /** Manual/human sends never call this wrapper and remain unaffected. */
 function createGuardedSend({
   realSend, supabase, inboundEventRowId, isEnabled = () => true, logEvent = () => {},
@@ -180,6 +196,10 @@ function createGuardedSend({
           : reservation.status === 'already_attempted'
             ? 'inbound_duplicate_suppressed'
             : 'processing_failed';
+      if (reservation.status === 'duplicate_content' || reservation.status === 'rate_limited') {
+        await recordTerminalProvenance(supabase, inboundEventRowId, 'failed',
+          reservation.status === 'duplicate_content' ? 'duplicate_suppressed' : 'rate_limited', correlationId);
+      }
       logEvent({ event_type: eventType, branch, guard_reason: reservation.status, correlation_id: correlationId });
       return { status: false, suppressed: true, reason: reservation.status, finalOutboundText, correlationId };
     }
@@ -202,6 +222,7 @@ function createGuardedSend({
       await markOutboundResult(supabase, {
         inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent: false,
       });
+      await recordTerminalProvenance(supabase, inboundEventRowId, 'failed', 'processing_failed', correlationId);
       logEvent({ event_type: 'processing_failed', branch, guard_reason: 'send_threw', correlation_id: correlationId });
       error.outboundFailure = true;
       error.failureReason = 'processing_failed';
@@ -214,6 +235,7 @@ function createGuardedSend({
     await markOutboundResult(supabase, {
       inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent,
     });
+    await recordTerminalProvenance(supabase, inboundEventRowId, sent ? 'sent' : 'failed', sent ? null : 'processing_failed', correlationId);
     logEvent({ event_type: sent ? 'outbound_sent' : 'processing_failed', branch, guard_reason: sent ? null : 'send_failed', correlation_id: correlationId });
     if (result && typeof result === 'object') {
       result.finalOutboundText = finalOutboundText;
@@ -275,3 +297,4 @@ module.exports = {
   RATE_LIMIT_MAX_SENDS,
   MONITORING_MAX_WAIT_MS,
 };
+
