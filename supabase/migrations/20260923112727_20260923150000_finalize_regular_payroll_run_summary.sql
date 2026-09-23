@@ -1,0 +1,9 @@
+-- Migration history alignment only.
+--
+-- Supabase MCP recorded remote migration version 20260923112727 when applying the
+-- already-versioned migration 20260923150000_finalize_regular_payroll_run_summary.
+-- The business DDL is contained in 20260923150000_finalize_regular_payroll_run_summary.sql
+-- and is already applied in production.
+--
+-- This file is intentionally comments-only. Do not add DDL here, do not replay the business migration,
+-- and do not delete or rewrite remote migration history.
