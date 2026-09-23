@@ -116,6 +116,16 @@ function isStructuredBookingSummary(message) {
 
 function classifyDeterministically(message, { canonicalBarberNames = [] } = {}) {
   const normalized = String(message || '').toLocaleLowerCase('id-ID');
+  if (/\b(?:bicara|ngobrol|hubungi|panggil|sambungkan|minta)\b.{0,35}\b(?:admin|manusia|customer service|cs)\b/.test(normalized)) {
+    return { intent: 'human_request', confidence: 1 };
+  }
+  if (/\b(proposal|sponsorship|sponsor|vendor|supplier|suplier|kerja\s*sama|softfile)\b/.test(normalized)) {
+    return { intent: 'business_correspondence', confidence: 1 };
+  }
+  if (/\b(member|membership|akun|otp)\b/.test(normalized)
+    && /\b(login|log\s*in|masuk|password|kata\s*sandi|otp)\b/.test(normalized)) {
+    return { intent: 'member_login_help', confidence: 1 };
+  }
   if (/\b(admin|manusia|customer service|cs)\b/.test(normalized) || /bicara (dengan |sama )?orang/.test(normalized)) {
     return { intent: 'human_request', confidence: 1 };
   }
@@ -180,3 +190,4 @@ function classifyDeterministically(message, { canonicalBarberNames = [] } = {}) 
 }
 
 module.exports = { classifyDeterministically, isStructuredBookingSummary };
+

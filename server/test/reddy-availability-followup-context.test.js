@@ -11,7 +11,7 @@ const SOFYAN = { id: 'barber-sofyan', name: 'Sofyan', branch: 'bypass', is_activ
 
 function turnsFrom(pairs) {
   // pairs: [[userText, assistantText], ...] — last entry may be user-only (current turn appended by caller).
-  const turns = [];
+  const turns = [{ role: 'user', content: 'Saya pilih Gentleman Grooming' }];
   for (const [user, assistant] of pairs) {
     turns.push({ role: 'user', content: user });
     if (assistant) turns.push({ role: 'assistant', content: assistant });
@@ -107,7 +107,7 @@ test('end-to-end: "Abdul hari ini kosong jam berapa?" then "Kalau jam 8 malam?" 
       capturedParams = params;
       return { success: true, reason_code: 'available', requested_time: '20:00', available: true, alternative_slots: [] };
     },
-    supabase: {},
+    supabase: { from: () => ({ select: () => ({ eq: async () => ({data:[{id:'grooming',name:'Gentleman Grooming',price:95000,duration_minutes:75,is_active:true}],error:null}) }) }) },
     logBookingTelemetry: () => {},
     logAvailability: () => {},
   });
@@ -138,7 +138,7 @@ test('end-to-end: "Besok Mas Sofyan ada?" then "Kalau jam 7 malam?" preserves So
       capturedParams = params;
       return { success: true, reason_code: 'available', requested_time: '19:00', available: true, alternative_slots: [] };
     },
-    supabase: {},
+    supabase: { from: () => ({ select: () => ({ eq: async () => ({data:[{id:'grooming',name:'Gentleman Grooming',price:95000,duration_minutes:75,is_active:true}],error:null}) }) }) },
     logBookingTelemetry: () => {},
     logAvailability: () => {},
   });
@@ -171,7 +171,7 @@ test('end-to-end: branch-wide context ("siapa yang kosong" + a barber named mid-
       capturedParams = params;
       return { success: true, reason_code: 'available', requested_time: '18:00', available: true, alternative_slots: [] };
     },
-    supabase: {},
+    supabase: { from: () => ({ select: () => ({ eq: async () => ({data:[{id:'grooming',name:'Gentleman Grooming',price:95000,duration_minutes:75,is_active:true}],error:null}) }) }) },
     logBookingTelemetry: () => {},
     logAvailability: () => {},
   });
@@ -198,9 +198,10 @@ test('every follow-up performs a fresh lookup — never reuses a cached availabi
     sendWA: async () => ({ status: true }),
     loadBarbers: async () => ({ status: 'verified', barbers: [ABDUL, SOFYAN], reason: null }),
     getAvailability: async () => { calls += 1; return { success: true, reason_code: 'available', requested_time: '20:00', available: true, alternative_slots: [] }; },
-    supabase: {},
+    supabase: { from: () => ({ select: () => ({ eq: async () => ({data:[{id:'grooming',name:'Gentleman Grooming',price:95000,duration_minutes:75,is_active:true}],error:null}) }) }) },
     logBookingTelemetry: () => {},
     logAvailability: () => {},
   });
   assert.equal(calls, 1);
 });
+

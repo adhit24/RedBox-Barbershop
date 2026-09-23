@@ -1637,6 +1637,21 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     return { used, reply: sendResult?.finalOutboundText || reply, sendResult, error: null };
   };
 
+  // Public instructions and business correspondence must never enter CRM.
+  if (classification?.intent === 'member_login_help') {
+    return sendAndPersistFinalReply('Login member Redbox memakai kode OTP WhatsApp, Kak. Buka https://redboxbarbershop.com/member-login.html, masukkan nomor WhatsApp, pilih Kirim Kode OTP, lalu masukkan kode di halaman login. Jangan bagikan kode OTP ke siapa pun.', 'member_login_help');
+  }
+  const priorUserMessage = [...activeHistoryTurns].reverse().find(turn => turn.role === 'user')?.content || '';
+  const businessFollowup = !classification
+    && /\b(berkas|file|pengajuan|dokumen|sudah dikirim|sudah saya kirim)\b/i.test(text)
+    && classifyDeterministically(priorUserMessage)?.intent === 'business_correspondence';
+  if (classification?.intent === 'business_correspondence' || businessFollowup) {
+    return sendAndPersistFinalReply('Terima kasih, Kak. Untuk proposal, sponsorship, atau penawaran kerja sama, silakan lanjutkan dengan petugas cabang yang mengarahkan. Boleh tuliskan nama organisasi dan tujuan pengajuannya? Aku belum bisa memastikan proposal sudah ditinjau atau disetujui.', 'business_correspondence');
+  }
+  if (/^(?:siap|oke|ok|baik|makasih|terima kasih)(?:\s+(?:mas|kak|ya|pak|bang))?[.!\s]*$/i.test(text.trim())) {
+    return sendAndPersistFinalReply('Siap, Kak.', 'acknowledgment');
+  }
+
   // Existing language routing owns presentation before the fact gate.
   const useForeignPresentation = (isForeignLanguage(text)
     || (presenceIntent.matched && responseLanguage !== 'indonesian'))
@@ -3342,3 +3357,4 @@ module.exports.isHumanTakeover = isHumanTakeover;
 module.exports.setHumanTakeoverLocal = setHumanTakeoverLocal;
 module.exports.isHumanTakeoverLocal = isHumanTakeoverLocal;
 module.exports.clearHumanTakeoverIfSourcedFrom = clearHumanTakeoverIfSourcedFrom;
+

@@ -5,6 +5,9 @@ const assert = require('node:assert/strict');
 
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 
+const CATALOG = [{ id: 'service-grooming', name: 'Gentleman Grooming', price: 95000, duration_minutes: 75, is_active: true }];
+const catalogDb = () => ({ from: () => ({ select: () => ({ eq: async () => ({ data: CATALOG, error: null }) }) }) });
+
 const ABDUL = { id: 'barber-abdul', name: 'Abdul', branch: 'bypass', is_active: true };
 
 function emptyContext(turns = []) {
@@ -22,7 +25,7 @@ async function runTurn({
   orchestrationDecision,
   availabilityResult = { success: true, reason_code: 'available', available_slots: ['17:00', '18:00'] },
   barbers = [ABDUL],
-  conversationContext = emptyContext(),
+  conversationContext = emptyContext([{ role: 'user', content: 'Saya pilih Gentleman Grooming' }]),
   callOpenAIImpl = async () => 'fallback LLM reply (should not be used for these tests)',
 } = {}) {
   const observations = { openAI: 0, availabilityCalls: 0, sent: [], availabilityTelemetry: [] };
@@ -37,12 +40,14 @@ async function runTurn({
     sendWA: async (_to, reply) => { observations.sent.push(reply); return { status: true }; },
     loadBarbers: async () => ({ status: 'verified', barbers, reason: null }),
     getAvailability: async (_supabase, params) => {
+      assert.equal(params.serviceId, 'service-grooming');
+      assert.equal(params.durationMinutes, 75);
       observations.availabilityCalls += 1;
       observations.lastParams = params;
       return typeof availabilityResult === 'function' ? availabilityResult(params) : availabilityResult;
     },
     logAvailability: (event) => observations.availabilityTelemetry.push(event),
-    supabase: {},
+    supabase: catalogDb(),
     logBookingTelemetry: () => {},
   });
   return { result, observations };
@@ -165,7 +170,7 @@ test('bare "Mas Abdul ada?" (no temporal word, presence-regex shaped) is enriche
     from: '628100000003',
     text: 'Mas Abdul ada?',
     branch: 'bypass',
-    conversationContext: emptyContext(),
+    conversationContext: emptyContext([{ role: 'user', content: 'Saya pilih Gentleman Grooming' }]),
     orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent' },
   }, {
     callOpenAI: async () => { throw new Error('LLM must not be called for a matched presence query'); },
@@ -173,7 +178,7 @@ test('bare "Mas Abdul ada?" (no temporal word, presence-regex shaped) is enriche
     loadBarbers: async () => ({ status: 'verified', barbers: [ABDUL], reason: null }),
     getSchedule: async () => ({ status: 'scheduled', source: 'planned_schedule_lookup', date: '2026-09-14' }),
     getAvailability: async () => ({ success: true, reason_code: 'available', available_slots: ['17:00', '18:00', '20:00'] }),
-    supabase: {},
+    supabase: catalogDb(),
     logBookingTelemetry: () => {},
     logAvailability: () => {},
   });
@@ -186,7 +191,7 @@ test('bare "Mas Abdul ada?" falls back to the unchanged presence-only reply when
     from: '628100000004',
     text: 'Mas Abdul ada?',
     branch: 'bypass',
-    conversationContext: emptyContext(),
+    conversationContext: emptyContext([{ role: 'user', content: 'Saya pilih Gentleman Grooming' }]),
     orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent' },
   }, {
     callOpenAI: async () => { throw new Error('LLM must not be called for a matched presence query'); },
@@ -194,7 +199,7 @@ test('bare "Mas Abdul ada?" falls back to the unchanged presence-only reply when
     loadBarbers: async () => ({ status: 'verified', barbers: [ABDUL], reason: null }),
     getSchedule: async () => ({ status: 'scheduled', source: 'planned_schedule_lookup', date: '2026-09-14' }),
     getAvailability: async () => { throw new Error('backend unavailable'); },
-    supabase: {},
+    supabase: catalogDb(),
     logBookingTelemetry: () => {},
     logAvailability: () => { throw new Error('should not be called on lookup failure'); },
   });
@@ -211,3 +216,4 @@ test('a request to book (not just ask availability) is never answered by the det
     assert.notEqual(classified?.intent, 'branch_availability_query');
   }
 });
+
