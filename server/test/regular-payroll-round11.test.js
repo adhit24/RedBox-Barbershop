@@ -336,7 +336,7 @@ test('11. Barber payroll runs are never touched by population reconciliation', a
   });
   const sb = createInMemorySupabase(store);
   const population = await reconcileRegularPayrollPopulation(sb, 'barber-run-1');
-  assert.deepEqual(population, { inserted: [], flagged_no_longer_eligible: [] });
+  assert.deepEqual(population, { inserted: [], flagged_no_longer_eligible: [], eligible_count: 0 });
 });
 
 test('reconciliation never touches a LOCKED run', async () => {
@@ -348,7 +348,7 @@ test('reconciliation never touches a LOCKED run', async () => {
 
   store.employees.push(regularEmployee({ id: 'emp-2', name: 'Beta Regular', nickname: 'Beta' }));
   const population = await reconcileRegularPayrollPopulation(sb, draft.run_id);
-  assert.deepEqual(population, { inserted: [], flagged_no_longer_eligible: [] });
+  assert.deepEqual(population, { inserted: [], flagged_no_longer_eligible: [], eligible_count: 0 });
   assert.equal(store.payroll_regular_items.filter((i) => i.payroll_run_id === draft.run_id).length, 1);
 });
 

@@ -152,4 +152,128 @@ function emulateAddRegularPayrollRunItems(store, args, { idFactory = () => `n${M
   return { data: { run_id: runId, items_count: itemsIn.length, status: 'DRAFT' }, error: null };
 }
 
-module.exports = { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems };
+/**
+ * JS emulation of public.finalize_regular_payroll_run_summary(...) for test doubles
+ * (20260923150000_serialize_regular_payroll_summary_refresh.sql).
+ *
+ * Mirrors the SQL exactly:
+ *  - DRAFT-only: returns {success:false, status:'RUN_NOT_DRAFT'} otherwise, writes nothing.
+ *  - When p_employee_ids is provided, recomputes the CURRENT workforce revision / eligible-population
+ *    count / population-scoped MAX(attendance_date) coverage and compares against the caller's expected
+ *    values; any mismatch returns {success:false, status:'STALE_COVERAGE', ...} and writes nothing.
+ *  - Otherwise (or once validated), aggregates totals from the CURRENT payroll_regular_items rows --
+ *    NEVER from a caller-supplied snapshot -- so a second concurrent call always sees every item update
+ *    a first concurrent call already committed (Round-19, PRRT_kwDOSNmW7c6lG3sZ).
+ *
+ * The real SQL's atomicity comes from `FOR UPDATE` + a transaction-scoped advisory lock; this
+ * single-threaded synchronous JS function is inherently atomic between one `await` and the next (no
+ * `await` appears inside it), which is the correctness property the tests rely on.
+ */
+function emulateFinalizeRegularPayrollRunSummary(store, args) {
+  const runId = args?.p_run_id;
+  const employeeIds = args?.p_employee_ids; // null = "don't touch coverage"; array (possibly empty) = validate it
+  store.payroll_runs = store.payroll_runs || [];
+  store.payroll_regular_items = store.payroll_regular_items || [];
+  store.employees = store.employees || [];
+  store.employee_attendance = store.employee_attendance || [];
+  store.payroll_workforce_version = store.payroll_workforce_version || [];
+
+  const run = store.payroll_runs.find((r) => r.id === runId);
+  if (!run) {
+    return { data: null, error: { message: `Payroll run ${runId} not found` } };
+  }
+  if (run.status !== 'DRAFT') {
+    return { data: { success: false, status: 'RUN_NOT_DRAFT', run_id: runId }, error: null };
+  }
+
+  let dataThrough = null;
+  let periodComplete = null;
+  if (employeeIds !== null && employeeIds !== undefined) {
+    const workforceVersion = Number((store.payroll_workforce_version.find((r) => r.id === 1) || {}).revision || 0);
+    const eligibleCount = store.employees.filter((e) =>
+      e.is_active === true &&
+      (e.employment_type == null || e.employment_type === 'regular') &&
+      (!e.join_date || e.join_date <= run.period_end) &&
+      (run.business_unit === 'ALL' || e.business_unit === run.business_unit)
+    ).length;
+
+    const idSet = new Set(employeeIds);
+    for (const row of store.employee_attendance) {
+      if (!idSet.has(row.employee_id)) continue;
+      if (row.attendance_date < run.period_start || row.attendance_date > run.period_end) continue;
+      if (!dataThrough || row.attendance_date > dataThrough) dataThrough = row.attendance_date;
+    }
+    periodComplete = Boolean(dataThrough && dataThrough >= run.period_end);
+
+    const expectedWorkforceVersion = args?.p_expected_workforce_version ?? null;
+    const expectedEligibleCount = args?.p_expected_eligible_count ?? null;
+    const expectedDataThrough = args?.p_expected_attendance_data_through ?? null;
+    const expectedPeriodComplete = args?.p_expected_attendance_period_complete ?? null;
+
+    const mismatch =
+      expectedWorkforceVersion !== workforceVersion ||
+      expectedEligibleCount !== eligibleCount ||
+      expectedDataThrough !== dataThrough ||
+      Boolean(expectedPeriodComplete) !== periodComplete;
+
+    if (mismatch) {
+      return {
+        data: {
+          success: false,
+          status: 'STALE_COVERAGE',
+          run_id: runId,
+          expected: {
+            workforce_version: expectedWorkforceVersion,
+            eligible_count: expectedEligibleCount,
+            attendance_data_through: expectedDataThrough,
+            attendance_period_complete: expectedPeriodComplete,
+          },
+          actual: {
+            workforce_version: workforceVersion,
+            eligible_count: eligibleCount,
+            attendance_data_through: dataThrough,
+            attendance_period_complete: periodComplete,
+          },
+        },
+        error: null,
+      };
+    }
+  }
+
+  const items = store.payroll_regular_items.filter((i) => i.payroll_run_id === runId);
+  let totalGross = 0;
+  let totalDeduction = 0;
+  let totalTakeHome = 0;
+  let reviewRequiredCount = 0;
+  let missingSalaryCount = 0;
+  let missingAttendanceCount = 0;
+  for (const it of items) {
+    totalGross += Number(it.gross_pay || 0);
+    totalDeduction += Number(it.total_deduction || 0);
+    totalTakeHome += Number(it.take_home_pay || 0);
+    if (it.status === 'REVIEW_REQUIRED') reviewRequiredCount++;
+    if (it.status === 'MISSING_SALARY') missingSalaryCount++;
+    if (it.status === 'MISSING_ATTENDANCE' || it.status === 'BLOCKED_ATTENDANCE_SOURCE') missingAttendanceCount++;
+  }
+
+  run.summary = {
+    ...(run.summary || {}),
+    total_employees: items.length,
+    total_gross_pay: totalGross,
+    total_deductions: totalDeduction,
+    total_take_home_pay: totalTakeHome,
+    review_required_count: reviewRequiredCount,
+    missing_salary_count: missingSalaryCount,
+    missing_attendance_count: missingAttendanceCount,
+    ...(employeeIds !== null && employeeIds !== undefined ? {
+      attendance_data_through: dataThrough,
+      expected_period_end: run.period_end,
+      attendance_period_complete: periodComplete,
+    } : {}),
+  };
+  run.updated_at = new Date().toISOString();
+
+  return { data: { success: true, status: 'PUBLISHED', run_id: runId, summary: run.summary }, error: null };
+}
+
+module.exports = { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems, emulateFinalizeRegularPayrollRunSummary };

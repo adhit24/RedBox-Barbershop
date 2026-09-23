@@ -19,7 +19,7 @@ const {
  * - employee_attendance
  * - attendance_exceptions
  */
-const { emulateCreateRegularPayrollRun } = require('./helpers/regularPayrollRpc');
+const { emulateCreateRegularPayrollRun, emulateFinalizeRegularPayrollRunSummary } = require('./helpers/regularPayrollRpc');
 
 function createMockDb(initialState = {}) {
   const tables = {
@@ -30,6 +30,7 @@ function createMockDb(initialState = {}) {
     employee_attendance: initialState.employee_attendance || [],
     attendance_exceptions: initialState.attendance_exceptions || [],
     employee_overtime_approvals: initialState.employee_overtime_approvals || [],
+    payroll_workforce_version: initialState.payroll_workforce_version || [],
   };
 
   let idCounter = 1;
@@ -213,6 +214,9 @@ function createMockDb(initialState = {}) {
         run.locked_at = new Date().toISOString();
         run.locked_by = args.p_user_email || 'admin@redbox.id';
         return Promise.resolve({ data: { success: true, status: 'LOCKED', run_id: run.id }, error: null });
+      }
+      if (fnName === 'finalize_regular_payroll_run_summary') {
+        return Promise.resolve(emulateFinalizeRegularPayrollRunSummary(tables, args));
       }
       return Promise.resolve({ data: null, error: { message: `Unknown RPC ${fnName}` } });
     },

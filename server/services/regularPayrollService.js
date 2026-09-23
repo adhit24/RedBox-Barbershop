@@ -737,6 +737,28 @@ async function fetchAttendanceSourceVersions(supabase, employeeIds) {
   }
 }
 
+/**
+ * Global payroll-relevant workforce revision (bumped by trg_bump_payroll_workforce_version on
+ * is_active/employment_type/join_date/business_unit changes). Used as one of the three staleness
+ * signals passed to finalize_regular_payroll_run_summary (Round-19, PRRT_kwDOSNmW7c6lG3sS): a fresh
+ * read here, captured at the START of an attempt, tells the RPC what population basis the caller's
+ * item recalculation used, so the RPC can detect (under its own FOR UPDATE hold) whether the
+ * eligible population changed before the summary is published.
+ */
+async function fetchWorkforceVersion(supabase) {
+  const { data, error } = await supabase
+    .from('payroll_workforce_version')
+    .select('revision')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) {
+    const err = new Error(`Failed to read payroll workforce version: ${error.message}`);
+    err.code = 'WORKFORCE_VERSION_READ_FAILED';
+    throw err;
+  }
+  return Number(data?.revision ?? 0);
+}
+
 const DEFAULT_ATTENDANCE_SUMMARY = Object.freeze({
   present_days: 0,
   absent_days: 0,
@@ -1502,10 +1524,10 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
     throw err;
   }
   if (run.payroll_type !== 'REGULAR' && run.payroll_type !== 'REGULAR_PAYROLL') {
-    return { inserted: [], flagged_no_longer_eligible: [] }; // Barber payroll is unaffected
+    return { inserted: [], flagged_no_longer_eligible: [], eligible_count: 0 }; // Barber payroll is unaffected
   }
   if (run.status !== 'DRAFT') {
-    return { inserted: [], flagged_no_longer_eligible: [] }; // never touches a LOCKED run
+    return { inserted: [], flagged_no_longer_eligible: [], eligible_count: 0 }; // never touches a LOCKED run
   }
 
   // 1. Authoritative eligible population NOW.
@@ -1614,7 +1636,12 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
     flagged.push(item.employee_id);
   }
 
-  return { inserted, flagged_no_longer_eligible: flagged };
+  // eligible_count: the CURRENT authoritative eligible-population size (Round-19,
+  // PRRT_kwDOSNmW7c6lG3sS/PRRT_kwDOSNmW7c6lG3sZ) -- passed through to the serialized summary
+  // finalization RPC as one of the signals proving the coverage basis has not gone stale. Deliberately
+  // the eligible count, not items.length: an item flagged EMPLOYEE_NO_LONGER_ELIGIBLE_FOR_RUN in a
+  // PRIOR round stays in the run (never deleted) but must not count as "still eligible" here.
+  return { inserted, flagged_no_longer_eligible: flagged, eligible_count: eligible.length };
 }
 
 /**
@@ -1622,7 +1649,9 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
  * item with { all: true }. LOCKED runs are never touched. Any failure aborts and is reported; the items
  * that were already rebuilt stay consistent because each item is rebuilt atomically from authoritative reads.
  */
-async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {}) {
+const REGULAR_PAYROLL_RECALC_MAX_ATTEMPTS = 3;
+
+async function recalculateRegularPayrollRun(supabase, runId, { all = false, maxAttempts = REGULAR_PAYROLL_RECALC_MAX_ATTEMPTS } = {}) {
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
     .select('id, status, payroll_type, period_start, period_end, summary')
@@ -1639,161 +1668,177 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     throw err;
   }
 
-  // Coverage basis persisted by the LAST refreshRunSummary/generateRegularPayrollDraft call, captured
-  // BEFORE population reconciliation or any recalculation touches it (Round-17, PRRT_kwDOSNmW7c6ksqma).
-  // This is the "old" side of the old-vs-new run coverage comparison below.
+  // Coverage basis persisted by the LAST successful finalize_regular_payroll_run_summary/
+  // generateRegularPayrollDraft call, captured ONCE before any attempt (Round-17, PRRT_kwDOSNmW7c6ksqma).
+  // This is the "old" side of the old-vs-new run coverage comparison below and does not change across
+  // retries within this call: a retry only happens when the finalize RPC found nothing was published.
   const previousCoverage = {
     attendance_data_through: run.summary?.attendance_data_through ?? null,
     attendance_period_complete: Boolean(run.summary?.attendance_period_complete),
   };
 
-  // 0. Reconcile the item population against the CURRENT eligible-employee population BEFORE
-  // recalculating existing items (P1-2, PRRT_kwDOSNmW7c6kkm1X): brings in employees who became
-  // eligible after generation, and flags any existing item whose employee is no longer eligible.
-  const population = await reconcileRegularPayrollPopulation(supabase, runId);
+  let lastConflict = null;
+  for (let attempt = 1; attempt <= Math.max(1, maxAttempts); attempt++) {
+    // 0. Reconcile the item population against the CURRENT eligible-employee population BEFORE
+    // recalculating existing items (P1-2, PRRT_kwDOSNmW7c6kkm1X): brings in employees who became
+    // eligible after generation, and flags any existing item whose employee is no longer eligible.
+    const population = await reconcileRegularPayrollPopulation(supabase, runId);
 
-  const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
-    .from('payroll_regular_items')
-    .select('id, employee_id, attendance_summary, attendance_source_revision, attendance_snapshot_revision, payroll_input_revision, payroll_snapshot_revision')
-    .eq('payroll_run_id', runId)
-    .order('id'));
-  if (itemsErr) {
-    const err = new Error(`Failed to read payroll items for run ${runId}: ${itemsErr.message}`);
-    err.code = 'ITEMS_READ_FAILED';
-    throw err;
-  }
+    const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
+      .from('payroll_regular_items')
+      .select('id, employee_id, attendance_summary, attendance_source_revision, attendance_snapshot_revision, payroll_input_revision, payroll_snapshot_revision')
+      .eq('payroll_run_id', runId)
+      .order('id'));
+    if (itemsErr) {
+      const err = new Error(`Failed to read payroll items for run ${runId}: ${itemsErr.message}`);
+      err.code = 'ITEMS_READ_FAILED';
+      throw err;
+    }
 
-  // 1. Re-read attendance source & compute authoritative run coverage across all employeeIds
-  const allEmployeeIds = [...new Set((items || []).map((i) => i.employee_id).filter(Boolean))];
-  const runCoverage = await computeRunAttendanceCoverage(supabase, {
-    periodStart: run.period_start,
-    periodEnd: run.period_end,
-    employeeIds: allEmployeeIds,
-  });
+    // 1. Capture the workforce revision and compute authoritative run coverage BEFORE recalculating any
+    // item -- this is the exact basis (Round-19, PRRT_kwDOSNmW7c6lG3sS) that will be handed to the
+    // serialized finalize RPC below for revalidation, so it must be read fresh on every attempt.
+    const allEmployeeIds = [...new Set((items || []).map((i) => i.employee_id).filter(Boolean))];
+    const workforceVersion = await fetchWorkforceVersion(supabase);
+    const runCoverage = await computeRunAttendanceCoverage(supabase, {
+      periodStart: run.period_start,
+      periodEnd: run.period_end,
+      employeeIds: allEmployeeIds,
+    });
 
-  // 1b. Old-vs-new run coverage comparison (Round-17, PRRT_kwDOSNmW7c6ksqma). ALL payroll items in one
-  // run must be calculated from the SAME authoritative run-wide coverage basis: a clean/READY item's OWN
-  // attendance_source_revision never changes just because a DIFFERENT employee's insertion or attendance
-  // moved the run-wide cutoff, so per-item dirty/revision flags alone cannot detect this. Any meaningful
-  // change to the authoritative coverage -- in EITHER direction (advance or regression) -- invalidates
-  // every existing item's calculation, not only the newly inserted/dirty ones.
-  const coverageChanged =
-    previousCoverage.attendance_data_through !== (runCoverage.attendance_data_through ?? null) ||
-    previousCoverage.attendance_period_complete !== Boolean(runCoverage.attendance_period_complete);
+    // 1b. Old-vs-new run coverage comparison (Round-17, PRRT_kwDOSNmW7c6ksqma). ALL payroll items in one
+    // run must be calculated from the SAME authoritative run-wide coverage basis: a clean/READY item's OWN
+    // attendance_source_revision never changes just because a DIFFERENT employee's insertion or attendance
+    // moved the run-wide cutoff, so per-item dirty/revision flags alone cannot detect this. Any meaningful
+    // change to the authoritative coverage -- in EITHER direction (advance or regression) -- invalidates
+    // every existing item's calculation, not only the newly inserted/dirty ones.
+    const coverageChanged =
+      previousCoverage.attendance_data_through !== (runCoverage.attendance_data_through ?? null) ||
+      previousCoverage.attendance_period_complete !== Boolean(runCoverage.attendance_period_complete);
 
-  // 2. Recalculate affected/all payroll items. A freshly inserted employee is always included in
-  // this request, even when the initial insert snapshot looks clean, so population reconciliation
-  // and item reconciliation form one ordered path before the final run summary is written. When the
-  // authoritative run-wide coverage itself changed, EVERY item in the run is stale by definition and
-  // must be recalculated against the SAME final runCoverage, regardless of its own dirty/revision state.
-  const insertedEmployeeIds = new Set(population.inserted || []);
-  const targets = (items || []).filter(
-    (i) => all ||
-           coverageChanged ||
-           insertedEmployeeIds.has(i.employee_id) ||
-           i.attendance_summary?.attendance_dirty === true ||
-           i.attendance_summary?.adjustments_dirty === true ||
-           Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
-           Number(i.payroll_input_revision || 0) !== Number(i.payroll_snapshot_revision || 0)
-  );
-  const recalculated = [];
-  for (const it of targets) {
-    let res;
-    try {
-      res = await recalculateSingleRegularItem(supabase, runId, it.id, {
-        refreshOvertime: true,
-        refreshAttendance: true,
-        runCoverage,
-      });
-    } catch (err) {
-      if (err.code === 'ATTENDANCE_CHANGED_DURING_RECALCULATION' || err.code === 'PAYROLL_INPUT_CHANGED_DURING_RECALCULATION') {
-        // Retry once from fresh attendance
+    // 2. Recalculate affected/all payroll items. A freshly inserted employee is always included in
+    // this request, even when the initial insert snapshot looks clean, so population reconciliation
+    // and item reconciliation form one ordered path before the final run summary is written. When the
+    // authoritative run-wide coverage itself changed, EVERY item in the run is stale by definition and
+    // must be recalculated against the SAME final runCoverage, regardless of its own dirty/revision state.
+    const insertedEmployeeIds = new Set(population.inserted || []);
+    const targets = (items || []).filter(
+      (i) => all ||
+             coverageChanged ||
+             insertedEmployeeIds.has(i.employee_id) ||
+             i.attendance_summary?.attendance_dirty === true ||
+             i.attendance_summary?.adjustments_dirty === true ||
+             Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
+             Number(i.payroll_input_revision || 0) !== Number(i.payroll_snapshot_revision || 0)
+    );
+    const recalculated = [];
+    for (const it of targets) {
+      let res;
+      try {
         res = await recalculateSingleRegularItem(supabase, runId, it.id, {
           refreshOvertime: true,
           refreshAttendance: true,
           runCoverage,
         });
-      } else {
+      } catch (err) {
+        if (err.code === 'ATTENDANCE_CHANGED_DURING_RECALCULATION' || err.code === 'PAYROLL_INPUT_CHANGED_DURING_RECALCULATION') {
+          // Retry once from fresh attendance
+          res = await recalculateSingleRegularItem(supabase, runId, it.id, {
+            refreshOvertime: true,
+            refreshAttendance: true,
+            runCoverage,
+          });
+        } else {
+          throw err;
+        }
+      }
+      if (res) recalculated.push(res);
+    }
+
+    // 3 & 4. Publish the run summary through the SERIALIZED finalize RPC (Round-19,
+    // PRRT_kwDOSNmW7c6lG3sS / PRRT_kwDOSNmW7c6lG3sZ): it re-validates, under its own DB-level lock, that
+    // the workforce revision / eligible population / run-wide coverage captured in step 1 are STILL
+    // current before writing anything, and computes the header totals from the live item rows rather
+    // than from this function's in-memory view -- so it can never publish a stale coverage basis and
+    // can never be overwritten-by / overwrite a concurrent recalculation of a different employee.
+    let finalize;
+    try {
+      finalize = await refreshRunSummary(supabase, runId, {
+        coverage: runCoverage,
+        employeeIds: allEmployeeIds,
+        expectedWorkforceVersion: workforceVersion,
+        expectedEligibleCount: population.eligible_count,
+      });
+    } catch (err) {
+      if (err.code === 'RUN_NOT_DRAFT') {
+        // The run left DRAFT (e.g. locked concurrently) mid-recalculation. Never retry a lock -- surface
+        // it directly so the caller understands recalculation cannot proceed, rather than looping.
         throw err;
       }
+      throw err;
     }
-    if (res) recalculated.push(res);
+
+    if (finalize.status === 'PUBLISHED') {
+      return { success: true, run_id: runId, recalculated_count: recalculated.length, items: recalculated, population, attempts: attempt };
+    }
+
+    // finalize.status === 'STALE_COVERAGE': the workforce/population/coverage basis this attempt used
+    // was no longer current by the time the serialized RPC ran. Fail-closed by construction -- nothing
+    // was written -- and retry the WHOLE operation (reconciliation through recalculation) against the
+    // now-current state, bounded by maxAttempts.
+    lastConflict = finalize;
   }
 
-  // 3 & 4. Recompute and refresh run summary with the fresh coverage
-  await refreshRunSummary(supabase, runId, { coverage: runCoverage });
-
-  return { success: true, run_id: runId, recalculated_count: recalculated.length, items: recalculated, population };
+  const err = new Error(
+    `Cannot finalize payroll run ${runId}: run-wide attendance coverage / eligible population kept changing during recalculation ` +
+    `(exhausted ${Math.max(1, maxAttempts)} attempt(s)). Retry once attendance/employee activity settles.`
+  );
+  err.code = 'PAYROLL_RECALC_CONCURRENT_MUTATION';
+  err.details = lastConflict;
+  throw err;
 }
 
 /**
  * Refresh run summary after items or adjustments update.
- * If coverage is passed (from recalculateRegularPayrollRun or generateRegularPayrollDraft),
- * coverage fields are refreshed authoritatively. Otherwise, existing summary coverage is preserved.
+ *
+ * Delegates ENTIRELY to the serialized public.finalize_regular_payroll_run_summary DB RPC (Round-19,
+ * PRRT_kwDOSNmW7c6lG3sS / PRRT_kwDOSNmW7c6lG3sZ): the RPC takes the run-row lock (plus the same global
+ * advisory lock every other Regular Payroll RPC uses) and recomputes totals from the CURRENT item rows
+ * under that lock, so two concurrent refreshes -- even for different employees' items, which never
+ * conflict on the per-item CAS -- can never have the second one overwrite the first with a stale
+ * snapshot; whichever runs second always reads what the first already committed.
+ *
+ * When `coverage` (and `employeeIds`) is passed (only recalculateRegularPayrollRun's final call does
+ * this), the RPC ALSO revalidates, under the same lock, that the workforce revision / eligible
+ * population count / run-wide attendance coverage the caller used are STILL current before writing
+ * anything. If they are not, nothing is written and { status: 'STALE_COVERAGE' } is returned instead --
+ * the caller is responsible for retrying the whole recalculation, never for treating this as success.
+ * Without `coverage` (the recalculateSingleRegularItem path), only totals/counts are refreshed and the
+ * existing persisted coverage fields are left untouched, matching the previous behavior.
  */
-async function refreshRunSummary(supabase, runId, { coverage = null } = {}) {
-  const { data: runRow, error: runSummaryErr } = await supabase
-    .from('payroll_runs')
-    .select('id, period_start, period_end, summary')
-    .eq('id', runId)
-    .single();
-  if (runSummaryErr || !runRow) {
-    const err = new Error(`Failed to read payroll run ${runId}: ${runSummaryErr?.message || 'not found'}`);
-    err.code = 'RUN_READ_FAILED';
+async function refreshRunSummary(supabase, runId, { coverage = null, employeeIds = null, expectedWorkforceVersion = null, expectedEligibleCount = null } = {}) {
+  const { data, error } = await supabase.rpc('finalize_regular_payroll_run_summary', {
+    p_run_id: runId,
+    p_employee_ids: coverage ? (employeeIds || []) : null,
+    p_expected_attendance_data_through: coverage ? (coverage.attendance_data_through ?? null) : null,
+    p_expected_attendance_period_complete: coverage ? Boolean(coverage.attendance_period_complete) : null,
+    p_expected_workforce_version: coverage ? expectedWorkforceVersion : null,
+    p_expected_eligible_count: coverage ? expectedEligibleCount : null,
+  });
+  if (error || !data) {
+    const err = new Error(`Failed to refresh payroll run summary: ${error?.message || 'no result'}`);
+    err.code = 'RUN_SUMMARY_REFRESH_FAILED';
     throw err;
   }
-
-  const { data: allItems, error: allItemsErr } = await fetchAllRows(() => supabase
-    .from('payroll_regular_items')
-    .select('employee_id, gross_pay, total_deduction, take_home_pay, status')
-    .eq('payroll_run_id', runId)
-    .order('id'));
-  // Fail closed: an unreadable item list must not leave the run summary (totals/counts) silently stale.
-  if (allItemsErr || !allItems) {
-    const err = new Error(`Failed to read payroll items for run ${runId}: ${allItemsErr?.message || 'no data'}`);
-    err.code = 'ITEMS_READ_FAILED';
+  if (!data.success && data.status === 'RUN_NOT_DRAFT') {
+    const err = new Error(`Cannot refresh payroll run summary ${runId}: run is no longer DRAFT`);
+    err.code = 'RUN_NOT_DRAFT';
     throw err;
   }
-
-  let totalGross = 0;
-  let totalDeduction = 0;
-  let totalTakeHome = 0;
-  let reviewRequiredCount = 0;
-  let missingSalaryCount = 0;
-
-  for (const it of allItems) {
-    totalGross += Number(it.gross_pay || 0);
-    totalDeduction += Number(it.total_deduction || 0);
-    totalTakeHome += Number(it.take_home_pay || 0);
-    if (it.status === 'REVIEW_REQUIRED') reviewRequiredCount++;
-    if (it.status === 'MISSING_SALARY') missingSalaryCount++;
-  }
-
-  const previousSummary = runRow.summary || {};
-  const missingAttendanceCount = allItems.filter(it => it.status === 'MISSING_ATTENDANCE' || it.status === 'BLOCKED_ATTENDANCE_SOURCE').length;
-
-  const { error: summaryErr } = await supabase
-    .from('payroll_runs')
-    .update({
-      summary: {
-        ...previousSummary,
-        missing_attendance_count: missingAttendanceCount,
-        total_employees: allItems.length,
-        total_gross_pay: totalGross,
-        total_deductions: totalDeduction,
-        total_take_home_pay: totalTakeHome,
-        review_required_count: reviewRequiredCount,
-        missing_salary_count: missingSalaryCount,
-        ...(coverage ? {
-          attendance_data_through: coverage.attendance_data_through,
-          expected_period_end: coverage.expected_period_end,
-          attendance_period_complete: coverage.attendance_period_complete,
-        } : {}),
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', runId);
-  if (summaryErr) throw new Error(`Failed to refresh payroll run summary: ${summaryErr.message}`);
+  // { success: true, status: 'PUBLISHED', ... } or { success: false, status: 'STALE_COVERAGE', ... }.
+  // Only recalculateRegularPayrollRun inspects `status`; every other caller ignores the return value,
+  // exactly as before (a non-coverage refresh always PUBLISHES -- there is nothing to revalidate).
+  return data;
 }
 
 /**

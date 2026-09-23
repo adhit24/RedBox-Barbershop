@@ -8,7 +8,7 @@
  *  - insert / update().eq().select().single() / delete().eq()
  *  - failures can be injected: opts.failOn = { 'table.insert' | 'table.update' | 'table.delete' | 'table.select': message }
  */
-const { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems } = require('./regularPayrollRpc');
+const { emulateCreateRegularPayrollRun, emulateAddRegularPayrollRunItems, emulateFinalizeRegularPayrollRunSummary } = require('./regularPayrollRpc');
 
 function createInMemorySupabase(store, opts = {}) {
   const failOn = opts.failOn || {};
@@ -31,6 +31,16 @@ function createInMemorySupabase(store, opts = {}) {
   const WORKFORCE_FIELDS = ['is_active', 'employment_type', 'join_date', 'business_unit'];
   const bumpWorkforceVersion = () => {
     store.__workforceRevision = Number(store.__workforceRevision || 0) + 1;
+    // Also mirrored as a real queryable row (Round-19, PRRT_kwDOSNmW7c6lG3sS/...sZ): the service layer's
+    // fetchWorkforceVersion() reads public.payroll_workforce_version like any other table via the generic
+    // .from() path below, exactly like production, rather than a special-cased internal counter.
+    store.payroll_workforce_version = store.payroll_workforce_version || [];
+    let row = store.payroll_workforce_version.find((r) => r.id === 1);
+    if (!row) {
+      row = { id: 1, revision: 0 };
+      store.payroll_workforce_version.push(row);
+    }
+    row.revision = store.__workforceRevision;
   };
 
   // trg_payroll_adjustment_mark_dirty: same transaction as the adjustment write
@@ -262,6 +272,9 @@ function createInMemorySupabase(store, opts = {}) {
       }
       if (fn === 'add_regular_payroll_run_items') {
         return Promise.resolve(emulateAddRegularPayrollRunItems(store, args, { idFactory: () => `n${seq++}` }));
+      }
+      if (fn === 'finalize_regular_payroll_run_summary') {
+        return Promise.resolve(emulateFinalizeRegularPayrollRunSummary(store, args));
       }
       if (fn === 'lock_payroll_run') {
         // The invariants live in the SQL (asserted statically) and in the service-side mirror; here only the state change
