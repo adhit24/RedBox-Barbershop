@@ -288,8 +288,8 @@ export function RevenueSharingPreview() {
 
       {!loading && !error && previewData && (
         <>
-          {/* Incomplete canonical data: totals below only cover the available dates */}
-          {previewData.data_coverage && !previewData.data_coverage.period_fully_covered && (
+          {/* Coverage is fail-closed: date bounds never prove interior sync continuity. */}
+          {previewData.data_coverage && previewData.data_coverage.coverage_status !== 'COMPLETE' && (
             <div
               role="alert"
               className="mb-5 flex items-start gap-2 rounded-rb-card border border-amber-300/40 bg-amber-50/60 p-3.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200"
@@ -298,12 +298,12 @@ export function RevenueSharingPreview() {
                 !
               </span>
               <span>
-                <strong>Data transaksi belum lengkap untuk periode ini.</strong>{' '}
+                <strong>Cakupan data transaksi belum dapat dibuktikan lengkap untuk periode ini.</strong>{' '}
                 Periode dipilih {previewData.data_coverage.requested_start} s/d {previewData.data_coverage.requested_end}
                 {previewData.data_coverage.available_start && previewData.data_coverage.available_end
-                  ? `, data item Moka tersedia ${previewData.data_coverage.available_start} s/d ${previewData.data_coverage.available_end}`
-                  : ', belum ada data item Moka'}
-                . Angka di bawah hanya mencakup tanggal yang tersedia, bukan total penuh periode.
+                  ? `, rentang item canonical yang terlihat ${previewData.data_coverage.available_start} s/d ${previewData.data_coverage.available_end}`
+                  : ', belum ada data item canonical Moka'}.
+                {' '}Total di bawah hanya berdasarkan data canonical yang tersedia; rentang awal–akhir tidak membuktikan tidak ada gap sinkronisasi di tengah periode.
               </span>
             </div>
           )}
@@ -313,7 +313,9 @@ export function RevenueSharingPreview() {
             <StatCard
               value={formatRupiah(previewData.summary.total_net_service_revenue)}
               label="Net Service Revenue"
-              trend={previewData.data_coverage && !previewData.data_coverage.period_fully_covered ? 'Data parsial' : undefined}
+              trend={previewData.data_coverage && previewData.data_coverage.coverage_status !== 'COMPLETE'
+                ? (previewData.data_coverage.coverage_status === 'PARTIAL' ? 'Data parsial' : 'Coverage belum terbukti')
+                : undefined}
               tint="blue"
             />
             <StatCard
