@@ -247,16 +247,21 @@ test('Revenue Sharing canonical pipeline', async (t) => {
       available_start: '2026-09-16',
       available_end: '2026-09-23',
       period_fully_covered: false,
+      coverage_status: 'PARTIAL',
+      coverage_basis: 'CANONICAL_ITEM_DATE_BOUNDS',
+      continuity_proven: false,
       missing_before: true,
       missing_after: true,
     });
   });
 
-  await t.test('coverage: period inside available range => fully covered', async () => {
+  await t.test('coverage: matching date bounds remain UNKNOWN because interior continuity is not proven', async () => {
     const items = [item({ tx_date: '2026-09-16' }), item({ tx_date: '2026-09-23' })];
     const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
     const preview = await getRevenueSharingPreview(sb, { dateFrom: '2026-09-16', dateTo: '2026-09-23' });
-    assert.equal(preview.data_coverage.period_fully_covered, true);
+    assert.equal(preview.data_coverage.period_fully_covered, false);
+    assert.equal(preview.data_coverage.coverage_status, 'UNKNOWN');
+    assert.equal(preview.data_coverage.continuity_proven, false);
     assert.equal(preview.data_coverage.missing_before, false);
     assert.equal(preview.data_coverage.missing_after, false);
   });
@@ -268,6 +273,7 @@ test('Revenue Sharing canonical pipeline', async (t) => {
     assert.equal(preview.data_coverage.missing_before, false);
     assert.equal(preview.data_coverage.missing_after, true);
     assert.equal(preview.data_coverage.period_fully_covered, false);
+    assert.equal(preview.data_coverage.coverage_status, 'PARTIAL');
   });
 
   await t.test('coverage: no canonical data at all => not covered, available range null', async () => {
@@ -308,8 +314,23 @@ test('Revenue Sharing canonical pipeline', async (t) => {
     const preview = await getRevenueSharingPreview(sb, PERIOD);
     const ubay = preview.barbers.find((b) => b.barber_id === 'csb-ubay');
     assert.equal(ubay.service_item_count, 1);
+    assert.equal(ubay.net_service_revenue, 120000, 'one of two units refunded => only half of line net remains commissionable');
+    assert.equal(ubay.gross_service_revenue, 120000);
     const d = await detailNet(sb, 'csb-ubay');
     assert.equal(d.summary.service_item_count, 1);
+    assert.equal(d.summary.net_service_revenue, 120000);
     assert.equal(ubay.net_service_revenue, d.summary.net_service_revenue);
+  });
+
+  await t.test('unassigned eligible service uses the same refund/deletion evaluator as barber items', async () => {
+    const items = [
+      item({ barber_id: null, quantity: 2, refunded_quantity: 1, gross_amount: 240000, net_amount: 240000 }),
+      item({ barber_id: null, is_deleted: true, net_amount: 90000, gross_amount: 90000 }),
+      item({ barber_id: null, quantity: 1, refunded_quantity: 1, net_amount: 120000, gross_amount: 120000 }),
+    ];
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
+    const preview = await getRevenueSharingPreview(sb, PERIOD);
+    assert.equal(preview.unassigned.service_items_count, 1);
+    assert.equal(preview.unassigned.service_net_amount, 120000);
   });
 });
