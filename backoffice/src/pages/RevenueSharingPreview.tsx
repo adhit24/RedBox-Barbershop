@@ -288,11 +288,32 @@ export function RevenueSharingPreview() {
 
       {!loading && !error && previewData && (
         <>
+          {/* Incomplete canonical data: totals below only cover the available dates */}
+          {previewData.data_coverage && !previewData.data_coverage.period_fully_covered && (
+            <div
+              role="alert"
+              className="mb-5 flex items-start gap-2 rounded-rb-card border border-amber-300/40 bg-amber-50/60 p-3.5 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white font-bold text-[10px]">
+                !
+              </span>
+              <span>
+                <strong>Data transaksi belum lengkap untuk periode ini.</strong>{' '}
+                Periode dipilih {previewData.data_coverage.requested_start} s/d {previewData.data_coverage.requested_end}
+                {previewData.data_coverage.available_start && previewData.data_coverage.available_end
+                  ? `, data item Moka tersedia ${previewData.data_coverage.available_start} s/d ${previewData.data_coverage.available_end}`
+                  : ', belum ada data item Moka'}
+                . Angka di bawah hanya mencakup tanggal yang tersedia, bukan total penuh periode.
+              </span>
+            </div>
+          )}
+
           {/* Top Summary Cards */}
           <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               value={formatRupiah(previewData.summary.total_net_service_revenue)}
               label="Net Service Revenue"
+              trend={previewData.data_coverage && !previewData.data_coverage.period_fully_covered ? 'Data parsial' : undefined}
               tint="blue"
             />
             <StatCard

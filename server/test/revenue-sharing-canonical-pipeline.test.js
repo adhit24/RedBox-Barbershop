@@ -24,7 +24,9 @@ function createFakeSupabase(tables) {
   function from(table) {
     const filters = [];
     let orderCol = null;
+    let orderDir = 1;
     let range = null;
+    let limit = null;
     let single = false;
     const q = {
       select() { return q; },
@@ -32,14 +34,15 @@ function createFakeSupabase(tables) {
       gte(col, val) { filters.push((r) => r[col] >= val); return q; },
       lte(col, val) { filters.push((r) => r[col] <= val); return q; },
       in(col, vals) { filters.push((r) => vals.includes(r[col])); return q; },
-      order(col) { orderCol = col; return q; },
+      order(col, opts) { orderCol = col; orderDir = opts && opts.ascending === false ? -1 : 1; return q; },
       range(a, b) { range = [a, b]; return q; },
+      limit(n) { limit = n; return q; },
       single() { single = true; return q; },
       then(resolve, reject) {
         try {
           let rows = (tables[table] || []).filter((r) => filters.every((f) => f(r)));
-          if (orderCol) rows = [...rows].sort((a, b) => String(a[orderCol]).localeCompare(String(b[orderCol]), 'en', { numeric: true }));
-          rows = range ? rows.slice(range[0], range[1] + 1) : rows.slice(0, MAX_ROWS);
+          if (orderCol) rows = [...rows].sort((a, b) => orderDir * String(a[orderCol]).localeCompare(String(b[orderCol]), 'en', { numeric: true }));
+          rows = range ? rows.slice(range[0], range[1] + 1) : rows.slice(0, Math.min(limit || MAX_ROWS, MAX_ROWS));
           resolve(single ? { data: rows[0] || null, error: rows[0] ? null : { message: 'not found' } } : { data: rows, error: null });
         } catch (e) { reject(e); }
       },
@@ -232,6 +235,67 @@ test('Revenue Sharing canonical pipeline', async (t) => {
     assert.equal(ubay.status, 'MISSING_RATE');
     assert.equal(ubay.calculated_commission, null);
     assert.equal(ubay.net_service_revenue, 600000);
+  });
+
+  await t.test('coverage: requested 1-24 Sep with canonical 16-23 Sep => not fully covered, missing before and after', async () => {
+    const items = [item({ tx_date: '2026-09-16' }), item({ tx_date: '2026-09-23' })];
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
+    const preview = await getRevenueSharingPreview(sb, PERIOD);
+    assert.deepEqual(preview.data_coverage, {
+      requested_start: '2026-09-01',
+      requested_end: '2026-09-24',
+      available_start: '2026-09-16',
+      available_end: '2026-09-23',
+      period_fully_covered: false,
+      missing_before: true,
+      missing_after: true,
+    });
+  });
+
+  await t.test('coverage: period inside available range => fully covered', async () => {
+    const items = [item({ tx_date: '2026-09-16' }), item({ tx_date: '2026-09-23' })];
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
+    const preview = await getRevenueSharingPreview(sb, { dateFrom: '2026-09-16', dateTo: '2026-09-23' });
+    assert.equal(preview.data_coverage.period_fully_covered, true);
+    assert.equal(preview.data_coverage.missing_before, false);
+    assert.equal(preview.data_coverage.missing_after, false);
+  });
+
+  await t.test('coverage: only the trailing edge is missing', async () => {
+    const items = [item({ tx_date: '2026-09-01' }), item({ tx_date: '2026-09-23' })];
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
+    const preview = await getRevenueSharingPreview(sb, PERIOD);
+    assert.equal(preview.data_coverage.missing_before, false);
+    assert.equal(preview.data_coverage.missing_after, true);
+    assert.equal(preview.data_coverage.period_fully_covered, false);
+  });
+
+  await t.test('coverage: no canonical data at all => not covered, available range null', async () => {
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: [] });
+    const preview = await getRevenueSharingPreview(sb, PERIOD);
+    assert.equal(preview.data_coverage.available_start, null);
+    assert.equal(preview.data_coverage.available_end, null);
+    assert.equal(preview.data_coverage.period_fully_covered, false);
+  });
+
+  await t.test('coverage: scoped to branch and independent of the barber/status filters', async () => {
+    const items = [
+      item({ tx_date: '2026-09-01', outlet_slug: 'bypass', barber_id: 'bypass-bob' }),
+      item({ tx_date: '2026-09-16' }),
+      item({ tx_date: '2026-09-23' }),
+    ];
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
+    const csb = await getRevenueSharingPreview(sb, { ...PERIOD, branch: 'csb' });
+    assert.equal(csb.data_coverage.available_start, '2026-09-16'); // bypass's 09-01 must not leak in
+    const oneBarber = await getRevenueSharingPreview(sb, { ...PERIOD, branch: 'csb', barberId: 'csb-ega' });
+    assert.equal(oneBarber.data_coverage.available_start, '2026-09-16'); // barber with no items still sees branch coverage
+  });
+
+  await t.test('coverage never changes revenue numbers (metadata only)', async () => {
+    const items = [item({ tx_date: '2026-09-20' })];
+    const sb = createFakeSupabase({ barbers: BARBERS, barber_commission_rates: [], moka_transaction_items: items });
+    const preview = await getRevenueSharingPreview(sb, PERIOD);
+    assert.equal(preview.summary.total_net_service_revenue, 120000);
   });
 
   // Duplicate-sync protection is a DB invariant, not service logic:

@@ -455,6 +455,47 @@ function calculateRevenueSharingPreview({
 }
 
 /**
+ * Pure builder for the data_coverage block. Compares the requested period with the date
+ * range for which canonical moka_transaction_items actually exist. Metadata only: it never
+ * changes any revenue number, it tells the UI when a total covers less than the full period.
+ */
+function buildDataCoverage({ requestedStart, requestedEnd, availableStart, availableEnd }) {
+  const reqStart = requestedStart ? formatDate(requestedStart) : null;
+  const reqEnd = requestedEnd ? formatDate(requestedEnd) : null;
+  const avStart = availableStart ? formatDate(availableStart) : null;
+  const avEnd = availableEnd ? formatDate(availableEnd) : null;
+
+  const missingBefore = Boolean(reqStart) && (!avStart || avStart > reqStart);
+  const missingAfter = Boolean(reqEnd) && (!avEnd || avEnd < reqEnd);
+
+  return {
+    requested_start: reqStart,
+    requested_end: reqEnd,
+    available_start: avStart,
+    available_end: avEnd,
+    period_fully_covered: !missingBefore && !missingAfter && Boolean(avStart),
+    missing_before: missingBefore,
+    missing_after: missingAfter,
+  };
+}
+
+/**
+ * Earliest and latest canonical transaction date for the branch scope. Deliberately ignores
+ * the date range, barber and status filters: coverage describes the data, not the view.
+ */
+async function fetchCanonicalDateBounds(supabase, branch) {
+  const edge = async (ascending) => {
+    let q = supabase.from('moka_transaction_items').select('tx_date').eq('is_deleted', false);
+    if (branch && branch !== 'all') q = q.eq('outlet_slug', branch);
+    const { data, error } = await q.order('tx_date', { ascending }).limit(1);
+    if (error) throw new Error(`Failed to check data coverage: ${error.message}`);
+    return data && data[0] ? formatDate(data[0].tx_date) : null;
+  };
+  const [availableStart, availableEnd] = await Promise.all([edge(true), edge(false)]);
+  return { availableStart, availableEnd };
+}
+
+/**
  * Backend service function to retrieve Revenue Sharing Preview from database.
  */
 async function getRevenueSharingPreview(supabase, {
@@ -524,7 +565,10 @@ async function getRevenueSharingPreview(supabase, {
     throw new Error(`Failed to load transaction items: ${itemsErr.message}`);
   }
 
-  return calculateRevenueSharingPreview({
+  // 4. Coverage: does canonical data actually span the requested period?
+  const bounds = await fetchCanonicalDateBounds(supabase, effectiveBranch);
+
+  const preview = calculateRevenueSharingPreview({
     items: items || [],
     barbers: barbers || [],
     rateHistory,
@@ -534,6 +578,16 @@ async function getRevenueSharingPreview(supabase, {
     barberFilter: barberId,
     statusFilter: status,
   });
+
+  return {
+    ...preview,
+    data_coverage: buildDataCoverage({
+      requestedStart: dateFrom,
+      requestedEnd: dateTo,
+      availableStart: bounds.availableStart,
+      availableEnd: bounds.availableEnd,
+    }),
+  };
 }
 
 /**
@@ -723,6 +777,7 @@ module.exports = {
   dayBefore,
   resolveBarberRateForDate,
   evaluateServiceItem,
+  buildDataCoverage,
   fetchAllRows,
   fetchBarberRateHistory,
   setBarberCommissionRate,
