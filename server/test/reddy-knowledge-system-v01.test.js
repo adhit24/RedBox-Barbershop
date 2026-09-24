@@ -1141,7 +1141,7 @@ test('S6. Fallback name normalization prevents "Kak Kak" for missing or default 
   assert.ok(replyKak.startsWith('Halo Kak,'), '"Kak" name formats to "Halo Kak,"');
   assert.equal(replyKak.includes('Kak Kak'), false, 'No duplicate Kak Kak');
 
-  assert.ok(replyName.startsWith('Halo Kak Adhit,'), 'Full name formats to "Halo Kak Adhit,"');
+  assert.ok(replyName.startsWith('Halo Adhit,'), 'Full name formats to "Halo Adhit,"');
 });
 
 test('T1. No parallel numeric foreign price catalog exists in webhook.js', async () => {

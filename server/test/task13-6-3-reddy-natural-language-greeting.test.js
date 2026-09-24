@@ -14,8 +14,8 @@ test('N1. New session + trusted CRM name "Adhit Nugraha" greets with "Kak Adhit"
   assert.equal(firstName, 'Adhit');
 
   const systemPrompt = buildSystemPrompt('bypass', 'expired', name);
-  assert.match(systemPrompt, /Kak Adhit/);
-  assert.equal(systemPrompt.includes('Kak Adhit Nugraha'), false);
+  assert.match(systemPrompt, /Hai Adhit/);
+  assert.equal(systemPrompt.includes('Adhit Nugraha'), false);
 });
 
 test('N2. New session + direct question instructs combined natural greeting and answer', () => {
@@ -173,7 +173,7 @@ test('R1. extractFirstName() is used in runtime path, safely handling invalid in
 
 test('R2. sessionStatus === "expired" is canonical new-session authority even with old history turns', () => {
   const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
-  assert.match(promptExpired, /Kak Adhit/);
+  assert.match(promptExpired, /Hai Adhit/);
   assert.match(promptExpired, /AWAL SESI BARU/);
 });
 
@@ -186,7 +186,7 @@ test('R3. sessionStatus active suppresses re-greeting and name overuse', () => {
 test('R4. Direct question on new session allows "Hai Kak Adhit, <answer>" blended greeting', () => {
   const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
   assert.match(promptExpired, /leburkan salam dan jawaban secara alami/);
-  assert.match(promptExpired, /Hai Kak Adhit, Haircut di Redbox/);
+  assert.match(promptExpired, /Hai Adhit, .../);
 });
 
 test('R5. Direct question on new session strictly forbids ceremonial greeting and generic greeting', () => {
@@ -197,7 +197,7 @@ test('R5. Direct question on new session strictly forbids ceremonial greeting an
 
 test('R6. fallbackReply uses extractFirstName() safely', () => {
   const replyValid = fallbackReply('halo', 'Adhit Nugraha', 'bypass');
-  assert.match(replyValid, /Kak Adhit/);
+  assert.match(replyValid, /Halo Adhit,/);
 
   const replyInvalid = fallbackReply('halo', 'c-12345', 'bypass');
   assert.equal(replyInvalid.includes('c-12345'), false);
@@ -242,10 +242,10 @@ test('RUNTIME1. callOpenAI injects Kak Adhit greeting for sessionStatus="expired
     { openai: mockOpenAI }
   );
 
-  const systemMsg = capturedMessages.find(m => m.role === 'system' && m.content.includes('Nama terverifikasi customer CRM ini'));
+  const systemMsg = capturedMessages.find(m => m.role === 'system' && m.content.includes('Nama customer: Adhit'));
   assert.ok(systemMsg, 'System message instruction for new session must be injected');
-  assert.match(systemMsg.content, /Kak Adhit/);
-  assert.match(systemMsg.content, /Ini awal sesi baru/);
+  assert.match(systemMsg.content, /Halo Adhit 👋/);
+  assert.match(systemMsg.content, /pesan pertama sesi/);
 });
 
 test('RUNTIME2. callOpenAI suppresses new-session greeting when sessionStatus="active_conversation"', async () => {
@@ -347,7 +347,7 @@ test('RUNTIME5. Source scan confirms NO raw name.trim().split(" ")[0] remains in
 test('RUNTIME6. buildSystemPrompt direct-question rules explicitly permit short personalized greeting for expired/new session', () => {
   const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
   assert.match(promptExpired, /leburkan salam dan jawaban secara alami/);
-  assert.match(promptExpired, /Hai Kak Adhit, Haircut di Redbox/);
+  assert.match(promptExpired, /Hai Adhit, .../);
   assert.match(promptExpired, /DILARANG menggunakan ceremonial greeting/);
 });
 
@@ -407,6 +407,6 @@ test('RUNTIME8. Expired session status with empty history turns triggers new-ses
 
   const systemMsg = capturedMessages.find(m => m.role === 'system');
   assert.ok(systemMsg, 'System message must exist');
-  assert.match(systemMsg.content, /INSTRUKSI SALAM SESI BARU/);
-  assert.match(systemMsg.content, /Kak Adhit/);
+  assert.match(systemMsg.content, /SALAM PERSONAL [(]AWAL SESI[)]/);
+  assert.match(systemMsg.content, /Halo Adhit 👋/);
 });

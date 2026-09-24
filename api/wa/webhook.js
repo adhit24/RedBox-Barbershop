@@ -1,5 +1,28 @@
 
-function buildBranchOperatingHoursText(lang) {
+function buildSingleBranchOperatingHoursText(lang, branchId) {
+  const b = getBranchConfig(branchId);
+  const headers = {
+    english: 'Opening hours ⏰:\n\n',
+    chinese: '营业时间 ⏰:\n\n',
+    japanese: '営業時間 ⏰:\n\n',
+    korean: '영업시간 ⏰:\n\n',
+    turkish: 'Çalışma saatleri ⏰:\n\n',
+  };
+  const everyDay = {
+    english: "We're open every day!",
+    chinese: '每天营业！',
+    japanese: '毎日営業中！',
+    korean: '매일 영업합니다!',
+    turkish: 'Her gün açığız!',
+  };
+  if (!headers[lang]) return undefined;
+  return `${headers[lang]}• ${b.name}: ${b.hours.opens}–${b.hours.closes}\n\n${everyDay[lang]}`;
+}
+
+// branchId (optional): when the WhatsApp channel's branch is locked, answer for
+// that single branch instead of the CSB-vs-others summary.
+function buildBranchOperatingHoursText(lang, branchId = null) {
+  if (branchId) return buildSingleBranchOperatingHoursText(lang, branchId);
   const csb = getBranchConfig('csb');
   const bypass = getBranchConfig('bypass');
 
@@ -59,8 +82,10 @@ function isForeignBookingIntent(text) {
 }
 
 
-function buildBranchLocationText(lang) {
-  const branches = REDBOX_KNOWLEDGE.branches;
+function buildBranchLocationText(lang, branchId = null) {
+  const branches = branchId
+    ? REDBOX_KNOWLEDGE.branches.filter(b => b.id === branchId)
+    : REDBOX_KNOWLEDGE.branches;
   const labels = {
     english: 'RedBox Barbershop Locations 📍:\n\n',
     chinese: 'RedBox Barbershop 分店位置 📍:\n\n',
@@ -102,6 +127,14 @@ const { servicesCatalog, buildCanonicalServicesText } = require('../../server/se
  */
 
 const { sendWA, detectBranchFromNumber } = require('../../server/services/fonnte');
+const {
+  buildBranchContext,
+  buildBranchContextPrompt,
+  detectRequestedBranch,
+  buildGreetingPrompt,
+  normalizeGreetingName,
+} = require('../../server/agents/reddy/branchGreetingContext');
+const { lookupGreetingName } = require('../../server/agents/reddy/greetingNameLookup');
 const {
   inspectFonnteWebhookShadow,
   emitFonnteWebhookShadow,
@@ -694,7 +727,10 @@ function buildServicesText(branch = 'bypass') {
   return buildCanonicalServicesText(branch);
 }
 
-function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null) {
+// branchVerified=false: the WhatsApp device did not match a known branch, so
+// `branch` is only a technical fallback and must never be shown to the model
+// as the customer's branch.
+function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null, branchVerified = true) {
   const now = new Date();
   const wibOffset = 7 * 60 * 60 * 1000;
   const wib = new Date(now.getTime() + wibOffset);
@@ -709,29 +745,42 @@ function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifie
   const firstName = extractFirstName(verifiedName);
   const isVerifiedName = Boolean(firstName);
   const personalityPrompt = buildReddyPersonalityPrompt({ branch, sessionStatus, isVerifiedName, verifiedName });
-  
+
+  const branchIdentityText = branchVerified ? `cabang ${bConfig.name}` : 'semua cabang (cabang customer belum dapat dipastikan dari nomor WhatsApp ini)';
+  const greetingBranchName = branchVerified ? bConfig.name : 'Redbox';
+  const branchFactsBlock = branchVerified
+    ? `Cabang sesi ini: ${bConfig.name}
+Alamat: ${bConfig.address}
+Jam Operasional Publik: ${bConfig.hours.opens} - ${bConfig.hours.closes} WIB
+Slot Booking Terakhir: ${bConfig.last_booking_slot} WIB`
+    : `Cabang sesi ini: TIDAK DIKETAHUI (BRANCH_LOCKED: false)
+Alamat, jam operasional, slot booking terakhir, dan kapster bergantung pada cabang. Jangan menganggap cabang tertentu. Jika customer menyebut cabang, gunakan fakta Zone B1 untuk cabang itu; jika belum, tanyakan cabangnya.`;
+  const hoursRules = branchVerified
+    ? `- Jika pelanggan bertanya jam operasional/buka/tutup ("buka jam berapa?", "tutup jam berapa?"): JAWAB MENGGUNAKAN JAM OPERASIONAL PUBLIK (${bConfig.hours.opens} - ${bConfig.hours.closes} WIB). DILARANG menggunakan slot booking terakhir (${bConfig.last_booking_slot} WIB) sebagai jam tutup toko!
+- Jika pelanggan bertanya waktu booking/slot terakhir ("bisa booking jam 9 malam?", "slot terakhir jam berapa?"): JAWAB MENGGUNAKAN SLOT BOOKING TERAKHIR (${bConfig.last_booking_slot} WIB) sebagai batas kebijakan.`
+    : `- Jam operasional dan slot booking terakhir berbeda per cabang. Karena cabang customer belum jelas, gunakan fakta Zone B1 untuk cabang yang disebut customer, atau tanyakan cabangnya dulu. DILARANG menggunakan slot booking terakhir sebagai jam tutup toko.`;
+  const kapsterBlock = branchVerified
+    ? `Kapster cabang ini (HANYA sebut ini, jangan sebut kapster cabang lain):
+${branchKapsters}`
+    : `Kapster: bergantung pada cabang. Jangan menyebut nama kapster sebelum cabang customer jelas.`;
+
   return `${personalityPrompt}
 
 # IDENTITAS SIKAP & METADATA
-Kamu adalah "Reddy" - digital host resmi Redbox Barbershop, cabang ${bConfig.name}. Kamu warm, empati, komunikatif, dan genuinely membantu pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
+Kamu adalah "Reddy" - digital host resmi Redbox Barbershop, ${branchIdentityText}. Kamu warm, empati, komunikatif, dan genuinely membantu pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
 
 Hari/waktu sekarang: ${dateStr}, pukul ${timeStr} WIB.
 
 ==================================================
 CABANG, JAM OPERASIONAL & SLOT BOOKING
 ==================================================
-Cabang sesi ini: ${bConfig.name}
-Alamat: ${bConfig.address}
-Jam Operasional Publik: ${bConfig.hours.opens} - ${bConfig.hours.closes} WIB
-Slot Booking Terakhir: ${bConfig.last_booking_slot} WIB
+${branchFactsBlock}
 
 ATURAN JAM OPERASIONAL vs SLOT BOOKING:
-- Jika pelanggan bertanya jam operasional/buka/tutup ("buka jam berapa?", "tutup jam berapa?"): JAWAB MENGGUNAKAN JAM OPERASIONAL PUBLIK (${bConfig.hours.opens} - ${bConfig.hours.closes} WIB). DILARANG menggunakan slot booking terakhir (${bConfig.last_booking_slot} WIB) sebagai jam tutup toko!
-- Jika pelanggan bertanya waktu booking/slot terakhir ("bisa booking jam 9 malam?", "slot terakhir jam berapa?"): JAWAB MENGGUNAKAN SLOT BOOKING TERAKHIR (${bConfig.last_booking_slot} WIB) sebagai batas kebijakan.
+${hoursRules}
 - DILARANG mengonfirmasi ketersediaan slot di WhatsApp ("Jam 21.00 masih tersedia" = DILARANG). Arahkan pelanggan untuk cek real-time dan booking langsung di website booking Redbox.
 
-Kapster cabang ini (HANYA sebut ini, jangan sebut kapster cabang lain):
-${branchKapsters}
+${kapsterBlock}
 
 ==================================================
 IDENTITAS & GAYA KOMUNIKASI
@@ -751,7 +800,7 @@ IDENTITAS & GAYA KOMUNIKASI
 ATURAN SALAM BERBASIS NIAT (INTENT-AWARE GREETING POLICY)
 ==================================================
 - Jika pelanggan membuka percakapan dengan salam eksplisit ("halo", "pagi", "hai"):
-  Salam pembuka diperbolehkan: "Halo Kak! Selamat datang di ${bConfig.name}. Ada yang bisa aku bantu?"
+  Salam pembuka diperbolehkan: "Halo Kak! Selamat datang di ${greetingBranchName}. Ada yang bisa aku bantu?"
 - Jika pelanggan langsung bertanya atau menyampaikan niat (misal: "harga haircut berapa?", "Bypass buka jam berapa?"):
   JAWAB LANGSUNG pertanyaan pelanggan. DILARANG menggunakan ceremonial greeting ("Selamat datang di Redbox...") dan DILARANG menyisipkan sapaan generik ("Ada yang bisa aku bantu?").
 - Jika sesi percakapan sedang aktif (active_turn / active_conversation / soft_continuity):
@@ -818,7 +867,10 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
   // Build branch-aware system prompt
   const sessionStatus = conversationContext?.sessionStatus || 'expired';
-  let systemPrompt = buildSystemPrompt(branch, sessionStatus, name);
+  let systemPrompt = buildSystemPrompt(
+    branch, sessionStatus, name,
+    conversationContext?.branchContext ? conversationContext.branchContext.branch_locked : true,
+  );
 
   
 
@@ -902,12 +954,19 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     systemPrompt += `\n\n# BOOKING INTELLIGENCE — ASSIST & GUIDE ONLY\n` +
       `Booking context berikut hanya membantu memahami preferensi customer; ini bukan bukti availability atau reservasi:\n${JSON.stringify(bookingContext)}\n` +
       `Execution: ${bookingAuthority.execution}. Reservation authority: ${bookingAuthority.reservation_authority}.\n` +
-      `Cabang nomor WhatsApp/transport bukan otomatis cabang pilihan customer; gunakan hanya branch di booking context jika statusnya terverifikasi.\n` +
+      `Untuk cabang booking: pakai branch di booking context jika statusnya terverifikasi; jika tidak ada, default-kan ke CURRENT_BRANCH dari nomor WhatsApp yang dihubungi (lihat KONTEKS CABANG WHATSAPP).\n` +
       `Gunakan handoff URL ini bila relevan: ${bookingAuthority.handoff_url}\n` +
       `DILARANG menyatakan booking dibuat, slot diamankan, barber dikunci, atau perubahan/cancel berhasil lewat WhatsApp.`;
   }
 
-  systemPrompt += `\n\n# KONTEKS CABANG SESI\nKamu melayani customer dari ${BRANCH_LABEL[branch] || BRANCH_LABEL.bypass}. Gunakan Zone B1 untuk fakta publik cabang.`;
+  if (conversationContext?.branchContext && !conversationContext.branchContext.branch_locked) {
+    // Device did not match a known branch number: do not present the default
+    // (Bypass) as the customer's channel.
+    systemPrompt += `\n\n# KONTEKS CABANG SESI\nBRANCH_LOCKED: false. Cabang dari nomor WhatsApp ini tidak dapat dipastikan; jangan menganggap customer berada di cabang tertentu. Jika jawaban bergantung pada cabang dan customer belum menyebutnya, tanyakan cabangnya. Gunakan Zone B1 untuk fakta publik cabang.`;
+  } else {
+    systemPrompt += `\n\n# KONTEKS CABANG SESI\nKamu melayani customer dari ${BRANCH_LABEL[branch] || BRANCH_LABEL.bypass}. Gunakan Zone B1 untuk fakta publik cabang.`;
+  }
+  systemPrompt += buildBranchContextPrompt(conversationContext?.branchContext);
 
   if (knowledgeFactsContext) {
     systemPrompt += `\n\n# ZONA B1 — VERIFIKASI PENGETAHUAN BISNIS REDBOX\n` +
@@ -922,14 +981,21 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
   const preparedHistory = buildConversationMessages(activeHistoryTurns, userMessage);
 
-  const firstName = extractFirstName(name);
-  const isVerifiedName = Boolean(firstName);
+  const greetingName = normalizeGreetingName(name);
   const isNewSession = sessionStatus === 'expired';
 
-  if (isNewSession && isVerifiedName) {
-    systemPrompt += `\n\n# INSTRUKSI SALAM SESI BARU\nNama terverifikasi customer CRM ini: ${name}. Ini awal sesi baru. Sapa dengan hangat di awal jawaban menggunakan nama depannya (Kak ${firstName}). Jika pelanggan langsung bertanya (misal: "Haircut berapa?"), leburkan sapaan nama dan jawaban secara alami ("Hai Kak ${firstName}, Haircut di Redbox..."), tanpa ceremonial greeting ("Selamat datang di Redbox...") dan tanpa sapaan generik terpisah ("Ada yang bisa aku bantu?").`;
-  } else if (!isNewSession) {
-    systemPrompt += `\n\n# INSTRUKSI SUPRESI SALAM (SESI AKTIF)\nSesi percakapan ini sedang AKTIF (percakapan berlanjut). DILARANG mengulang salam pembuka ("Hai Kak ${firstName || ''}") dan DILARANG mengulang sapaan nama. Langsung jawab pertanyaan pelanggan.`;
+  if (isNewSession) {
+    systemPrompt += buildGreetingPrompt({
+      greetingName,
+      branchName: conversationContext?.branchContext?.branch_locked ? conversationContext.branchContext.branch_name : null,
+      isNewSession,
+    });
+    if (greetingName) {
+      systemPrompt += `\nJika pelanggan langsung bertanya (misal: "Haircut berapa?"), tanpa ceremonial greeting ("Selamat datang di Redbox...") dan tanpa sapaan generik terpisah ("Ada yang bisa aku bantu?").`;
+    }
+  } else {
+    const activeName = greetingName || '';
+    systemPrompt += `\n\n# INSTRUKSI SUPRESI SALAM (SESI AKTIF)\nSesi percakapan ini sedang AKTIF (percakapan berlanjut). DILARANG mengulang salam pembuka ("Hai ${activeName}") dan DILARANG mengulang sapaan nama. Langsung jawab pertanyaan pelanggan.`;
   }
 
   // Round 3 correction: response_language is resolved once, upstream, by
@@ -994,7 +1060,7 @@ function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null, re
 
   const t = text.toLowerCase();
   const fn = extractFirstName(name);
-  const nameLabel = fn ? 'Kak ' + fn : 'Kak';
+  const nameLabel = fn || 'Kak';
 
   const has = (kws) => kws.some(k => t.includes(k));
   const bConfig = getBranchConfig(branch);
@@ -1152,13 +1218,13 @@ function foreignMsg(lang, msgs) {
   return msgs[lang];
 }
 
-async function handleForeignBooking(from, name, text, device, branch = 'bypass') {
+async function handleForeignBooking(from, name, text, device, branch = 'bypass', branchLocked = false) {
   const lang = detectForeignLanguage(text);
   const lower = text.toLowerCase().trim();
   const url = bookingUrl(branch);
 
   const isBookingReq = isForeignBookingIntent(text);
-  const generalAnswer = handleForeignGeneralQuestion(text, lang, null, branch);
+  const generalAnswer = handleForeignGeneralQuestion(text, lang, null, branch, branchLocked);
 
   // Mixed Intent: both general question (e.g. hours/price/location) AND booking intent exist
   if (generalAnswer && isBookingReq) {
@@ -1208,8 +1274,11 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
 }
 
 // ── General question handler for foreign customers ──
-function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
+function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass', branchLocked = false) {
   const lower = text.toLowerCase();
+  // Branch-lock: the WhatsApp channel's branch (or an explicitly named other
+  // branch) scopes location/hours answers; unlocked keeps the legacy summaries.
+  const scopeBranch = branchLocked ? (detectRequestedBranch(text, branch) || branch) : null;
   const KAPSTER_LIST = getKapsterListForBranch(branch);
 
   // Kapster/barber questions
@@ -1266,7 +1335,7 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
     /nerede|adres|konum|nasıl gid/i,
   ];
   if (locationPatterns.some(p => p.test(text))) {
-    return buildBranchLocationText(lang);
+    return buildBranchLocationText(lang, scopeBranch);
   }
 
   // Hours/time questions
@@ -1274,8 +1343,8 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
   const isHoursReq = /what time|open|close|closing|hour|hours|when.*open|buka|tutup|operasional|jam/i.test(text);
 
   if (isLastSlotReq && isHoursReq) {
-    const opHours = buildBranchOperatingHoursText(lang);
-    const slotText = buildBranchLastBookingSlotText(lang, branch);
+    const opHours = buildBranchOperatingHoursText(lang, scopeBranch);
+    const slotText = buildBranchLastBookingSlotText(lang, scopeBranch || branch);
     // Round 2 blocker 1: only combine the two if both have a localized
     // renderer for `lang` — never join one real string with "undefined".
     // If either is missing, fall through to the single-topic branches below,
@@ -1285,11 +1354,11 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
   }
 
   if (isLastSlotReq) {
-    return buildBranchLastBookingSlotText(lang, branch);
+    return buildBranchLastBookingSlotText(lang, scopeBranch || branch);
   }
 
   if (isHoursReq) {
-    return buildBranchOperatingHoursText(lang);
+    return buildBranchOperatingHoursText(lang, scopeBranch);
   }
 
   // Payment questions
@@ -1352,6 +1421,10 @@ function extractForeignService(text) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
+async function defaultLookupCustomerName(phone) {
+  return lookupGreetingName(getSupabase(), phone);
+}
+
 async function handleMessage({ from, name, text, device, receiver, branch: explicitBranchParam, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null, correlationId: explicitCorrelationId = null }, deps = {}) {
   const correlationId = explicitCorrelationId || deps.correlationId || null;
   const {
@@ -1381,6 +1454,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     loadBarbers = loadCanonicalBarbers,
     getSchedule = undefined,
     persistConversation = persistConversationExchange,
+    lookupCustomerName = defaultLookupCustomerName,
   } = deps;
 
   let branch = branchFromPayload || explicitBranchParam;
@@ -1388,6 +1462,15 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     branch = detectBranchFromNumber(receiver || device || from);
   }
   console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
+  // Branch-lock: recomputed from the inbound Fonnte device on every message —
+  // never from stored conversation memory or the LLM.
+  const branchContext = buildBranchContext({
+    branch,
+    deviceOrReceiver: receiver || device,
+    explicit: Boolean(explicitBranchParam),
+    text,
+  });
+  branch = branchContext.conversation_branch || branch;
 
   // ── Task 15: Human Takeover Runtime Gate — single source of truth ─────────
   // Must run before the orchestrator/Reddy/OpenAI are reached (spec §9), AND
@@ -1616,6 +1699,34 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   // exchange back to the same scoped conversation it was loaded from —
   // never a plain, unscoped `sender` key (Objective C).
   conversationContext.providerDeviceHash = providerDeviceHash;
+  conversationContext.branchContext = branchContext;
+  // Personal greeting name: only looked up on the first message of a session
+  // (sessionStatus 'expired'), via the existing normalized-phone CRM resolver.
+  let greetingNameSource = 'none';
+  if (conversationContext.sessionStatus === 'expired' && trustedIdentity?.phone) {
+    try {
+      const looked = normalizeGreetingName(await lookupCustomerName(trustedIdentity.phone));
+      if (looked) {
+        conversationContext.greeting_name = looked;
+        greetingNameSource = 'customers_table';
+      }
+    } catch {
+      // Name is a nicety; a lookup failure falls back to the generic greeting.
+    }
+  }
+  // The raw provider payload `name` (WhatsApp display/push name) is unverified.
+  // From here on every greeting/deterministic path sees only the trusted
+  // resolved customer name, or null for the generic greeting.
+  name = conversationContext.greeting_name || null;
+  console.log('[Reddy Context]', JSON.stringify({
+    branch_detected: branchContext.conversation_branch,
+    branch_source: branchContext.branch_source,
+    branch_locked: branchContext.branch_locked,
+    requested_branch: branchContext.requested_branch,
+    customer_name_resolved: greetingNameSource !== 'none',
+    customer_name_source: greetingNameSource,
+    greeting_personalized: conversationContext.sessionStatus === 'expired' && greetingNameSource !== 'none',
+  }));
   const presenceIntent = classifyBarberPresenceQuery(text);
   const responseLanguage = resolveResponseLanguage(text, conversationContext, { presenceIntent });
   conversationContext.response_language = responseLanguage;
@@ -1643,7 +1754,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     && classification?.intent !== 'barber_popularity_inquiry';
   if (useForeignPresentation) {
     console.log('[WA Bot] Existing foreign language route retained');
-    const result = await handleForeignBooking(from, name, text, device, branch);
+    const result = await handleForeignBooking(from, name, text, device, branch, branchContext.branch_locked);
     if (result) {
       return sendAndPersistFinalReply(result.reply, result.used, { intent: result.used });
     }
