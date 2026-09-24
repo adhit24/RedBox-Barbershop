@@ -39,6 +39,9 @@ export interface RevenueSharingDataCoverage {
   available_start: string | null;
   available_end: string | null;
   period_fully_covered: boolean;
+  coverage_status: 'PARTIAL' | 'UNKNOWN' | 'COMPLETE';
+  coverage_basis: string;
+  continuity_proven: boolean;
   missing_before: boolean;
   missing_after: boolean;
 }
