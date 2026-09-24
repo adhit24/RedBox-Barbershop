@@ -363,7 +363,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   let error = null;
 
   // Verified CRM name source: derive ONLY from customerIntelligence facts or customer entity
-  const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
+  const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || conversationContext?.greeting_name || null;
   const presenceIntent = classifyBarberPresenceQuery(text);
   const responseLanguage = String(conversationContext?.response_language || 'indonesian').toLowerCase();
 
