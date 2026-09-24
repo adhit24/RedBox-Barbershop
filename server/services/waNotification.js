@@ -13,7 +13,11 @@ async function sendNotification(to, message, branch) {
   const result = await sendWA(to, message, { branch });
   if (!result) throw new Error('Fonnte token missing or send skipped');
   if (result.status === false) {
-    throw new Error(result.reason || result.error || result.message || 'Fonnte rejected message');
+    const reason = result.reason || result.error || result.message || 'Fonnte rejected message';
+    // Machine-readable code so telemetry can tell "branch device not configured"
+    // apart from provider rejections (the original text is kept for existing matchers).
+    if (/not configured for branch/i.test(String(reason))) throw new Error(`branch_token_missing: ${reason}`);
+    throw new Error(reason);
   }
   return result;
 }
@@ -25,17 +29,25 @@ function canFailoverOperationalNotification(error) {
     || message.includes('send skipped');
 }
 
-// Operational alerts must not disappear just because one branch device is offline.
-// We only fail over admin/barber notifications, never customer-facing messages,
-// so customers still receive messages from the correct branch identity.
+// ADMIN alerts only: they must not disappear just because one branch device is
+// offline (the admin number is a single GLOBAL number, WA_ADMIN_NUMBER, not per-branch).
+// Barber and customer messages NEVER use this: sender identity is part of branch ownership.
+// The result is annotated so telemetry can show the requested branch vs the device
+// that actually sent (failover=true means it did NOT go out from the branch device).
 async function sendOperationalNotification(to, message, branch) {
   const normalizedBranch = String(branch || '').toLowerCase();
+  const requested = normalizedBranch || 'bypass';
   try {
-    return await sendNotification(to, message, normalizedBranch || 'bypass');
+    const r = await sendNotification(to, message, requested);
+    return { ...r, requested_branch: requested, actual_device: requested, failover: false };
   } catch (error) {
     if (normalizedBranch && normalizedBranch !== 'bypass' && canFailoverOperationalNotification(error)) {
       console.warn(`[WA Operational] ${normalizedBranch} unavailable; retrying via bypass device: ${error.message}`);
-      return sendNotification(to, message, 'bypass');
+      const r = await sendNotification(to, message, 'bypass');
+      return {
+        ...r, requested_branch: requested, actual_device: 'bypass', failover: true,
+        failover_reason: String(error.message || error).slice(0, 200),
+      };
     }
     throw error;
   }
@@ -242,7 +254,8 @@ Harga     : ${price}
 
 Catat jadwal ini ya! Kamu akan mendapat pengingat beserta instruksi keberangkatan *1 jam sebelum jadwal*. 📌`;
 
-  return sendOperationalNotification(barberPhone, msg, branch);
+  // Barber notice: strict branch device, no failover to Bypass.
+  return sendNotification(barberPhone, msg, branch);
 }
 
 // Remind barber 1 hour before home service booking
@@ -268,7 +281,8 @@ Jangan lupa bersiap-siap ya! 🛠️
 Balas *BERANGKAT* saat kamu mulai berangkat ke lokasi.
 Balas *SELESAI* setelah pekerjaan selesai.`;
 
-  return sendOperationalNotification(barberPhone, msg, branch);
+  // Barber notice: strict branch device, no failover to Bypass.
+  return sendNotification(barberPhone, msg, branch);
 }
 
 // Notify barber of new in-outlet booking
@@ -291,10 +305,85 @@ Kamu punya pesanan baru di ${location}! 📋
 
 Jangan lupa catat ya! ✂️`;
 
-  return sendOperationalNotification(barberPhone, msg, branch);
+  // Barber notice: strict branch device, no failover to Bypass.
+  return sendNotification(barberPhone, msg, branch);
+}
+
+function durationLabel(duration) {
+  const raw = String(duration == null ? '' : duration).trim();
+  if (!raw) return '';
+  return /^\d+$/.test(raw) ? `${raw} menit` : raw;
+}
+
+// 6. ONE consolidated confirmation for a multi-person booking (single main contact).
+// members: [{ name, service, time, duration, barber_name }]
+async function notifyCustomerGroupBookingConfirmed({ wa, contactName, location, date, members }) {
+  const fn = String(contactName || 'Kak').trim().split(' ')[0];
+  const sameDate = new Set(members.map(m => m.date || date)).size <= 1;
+  const lines = members.map((m, i) => {
+    const kapster = m.barber_name ? `\n   💈 Kapster *${m.barber_name}*` : '';
+    const durasi = durationLabel(m.duration);
+    const tgl = sameDate ? '' : `\n   📅 ${formatDate(m.date)}`;
+    return `${i + 1}. *${m.name}*\n   ✂️ ${m.service}${durasi ? ` (±${durasi})` : ''}${kapster}${tgl}\n   ⏰ Jam *${m.time} WIB*`;
+  }).join('\n\n');
+  const label = branchLabel(location);
+  const message =
+`Haii kak *${fn}*! 👋
+
+Yeay, booking kamu sudah *CONFIRMED* nih! 🎉✅
+
+📋 *BOOKING ${members.length} ORANG — ${label.toUpperCase()}*
+
+${lines}
+
+${sameDate ? `📅 ${formatDate(date)}\n` : ''}📍 *${label}*
+
+Kami udah catat jadwalnya — tinggal dateng aja kak! 😄`;
+
+  // Customer-facing: strict branch device, no failover to another branch.
+  return sendNotification(wa, message, location);
+}
+
+// 7. Assignment notice to ONE barber about ONE customer (no customer phone).
+// Strict branch device: a barber notice must never silently ride another branch's device.
+async function notifyBarberBookingAssignment({
+  barberPhone, customerName, service, time, date, duration, location,
+}) {
+  const durasi = durationLabel(duration);
+  const msg =
+`BOOKING BARU — ${branchLabel(location).toUpperCase()}
+
+Customer: ${customerName}
+Service: ${service}
+Jam: ${time} WIB
+Tanggal: ${formatDate(date)}${durasi ? `\nDurasi: ${durasi}` : ''}
+
+Kamu terpilih sebagai kapster untuk booking ini.`;
+  return sendNotification(barberPhone, msg, location);
+}
+
+// 8. One consolidated admin notice for a multi-person booking (parity with single-booking admin alert).
+async function notifyAdminGroupBooking({ contactName, wa, location, members }) {
+  if (!ADMIN_NUMBER) return null;
+  const rows = members.map((m, i) =>
+    `${i + 1}. ${m.name} — ${m.service} — ${m.barber_name || m.barber_id || '-'} — ${m.time} WIB`).join('\n');
+  const message =
+`🔔 *Booking Grup Baru Masuk!*
+
+👤 Kontak: ${contactName} (${wa})
+📍 ${branchLabel(location)}
+📅 ${formatDate(members[0]?.date)}
+
+${rows}
+
+#RedBoxBooking`;
+  return sendOperationalNotification(ADMIN_NUMBER, message, location);
 }
 
 module.exports = {
+  notifyCustomerGroupBookingConfirmed,
+  notifyBarberBookingAssignment,
+  notifyAdminGroupBooking,
   notifyCustomerBookingConfirmed,
   notifyCustomerReminderH1,
   notifyAdminNewBooking,

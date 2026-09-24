@@ -22,6 +22,7 @@
 // ============================================================
 
 const express          = require('express');
+const { filterBlocking } = require('../utils/slotBlocking');
 const { randomUUID }   = require('crypto');
 const { resolveMembershipTier } = require('../membership-policy');
 
@@ -623,8 +624,13 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
       if (barberId) query = query.eq('barber_id', barberId);
       if (source)   query = query.eq('source', source);
 
-      const { data, error } = await query;
+      const { data: rawSchedules, error } = await query;
       if (error) throw new Error(error.message);
+
+      // `blocking=1` → availability consumers (booking page) get only rows that
+      // still hold a slot. Default stays unfiltered so admin/CRM keep history.
+      const blockingOnly = ['1', 'true'].includes(String(req.query.blocking || '').toLowerCase());
+      const data = blockingOnly ? filterBlocking(rawSchedules) : rawSchedules;
 
       res.json({ schedules: data || [], lastSyncAt: outletId ? getLastSyncAt(outletId) : null });
     } catch (err) {

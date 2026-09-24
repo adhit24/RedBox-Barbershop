@@ -9,6 +9,8 @@
 //   • Requested service duration
 // ============================================================
 
+const { filterBlocking } = require('../utils/slotBlocking');
+
 const SLOT_INTERVAL_MIN = 30; // generate a candidate slot every 30 minutes (outlet)
 
 // Home service / wedding rules:
@@ -89,16 +91,17 @@ async function getAvailableSlots(supabase, {
 
   const { data: existing } = await supabase
     .from('schedules')
-    .select('barber_id, start_time, end_time')
+    .select('barber_id, start_time, end_time, status')
     .eq('outlet_id', outletId)
-    .not('status', 'in', '("cancelled")')
     .lt('start_time', dayEnd)    // schedule starts before end-of-day
     .gt('end_time',   dayStart); // schedule ends after start-of-day
 
   // Group busy slots by barber; collect null-barber (unmatched GoShow) as outlet-wide blocks
   const busyMap = {};
   const outletWideBlocks = []; // blocks that apply to ALL barbers (GoShow with unresolved barber)
-  for (const s of existing || []) {
+  // Status filtering happens here (case-insensitive) instead of in SQL, so
+  // 'Cancelled' / 'CANCELLED' / 'canceled' can never keep holding a slot.
+  for (const s of filterBlocking(existing)) {
     const block = {
       start: new Date(s.start_time).getTime(),
       end:   new Date(s.end_time).getTime(),
@@ -118,12 +121,11 @@ async function getAvailableSlots(supabase, {
   if (barberIds.length) {
     const { data: legacyBookings } = await supabase
       .from('bookings')
-      .select('barber_id, date, time, duration')
+      .select('barber_id, date, time, duration, status')
       .in('barber_id', barberIds)
-      .eq('date', date)
-      .not('status', 'in', '("cancelled","rejected")');
+      .eq('date', date);
 
-    for (const b of legacyBookings || []) {
+    for (const b of filterBlocking(legacyBookings)) {
       if (!b.barber_id || !b.time) continue;
       const timeStr = String(b.time).slice(0, 5);
       const startMs = _timeStrToMs(date, timeStr);

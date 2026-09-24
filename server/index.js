@@ -28,6 +28,8 @@ const { getCustomerReviewsCount } = require('./member-reviews');
 const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membership-identity');
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
+const { filterBlocking } = require('./utils/slotBlocking');
+const { dispatchBookingNotifications, notifyBarberOutletBooking: notifyBarberOutletBookingLegacy } = require('./services/bookingNotificationOrchestrator');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
 const { isBookingLeadTimeAllowed, safeAdminTokenMatch, isHomeServiceBooking } = require('./utils/bookingLeadTime');
 const { isServerTestEnvironment } = require('./utils/testIsolation');
@@ -583,10 +585,10 @@ async function hasOverlapSupabase({ barberId, date, time, duration, excludeId = 
   const newEnd = newStart + parseDurationMins(duration);
 
   // Check legacy bookings table
-  let q = supabase.from('bookings').select('id,time,duration').eq('barber_id', barberId).eq('date', date).neq('status', 'cancelled');
+  let q = supabase.from('bookings').select('id,time,duration,status').eq('barber_id', barberId).eq('date', date);
   if (excludeId) q = q.neq('id', excludeId);
   const { data: legacyRows } = await q;
-  if ((legacyRows || []).some(b => {
+  if (filterBlocking(legacyRows).some(b => {
     const bStart = timeToMinsStr(b.time);
     const bEnd = bStart + parseDurationMins(b.duration);
     return (newStart < bEnd) && (bStart < newEnd);
@@ -597,15 +599,14 @@ async function hasOverlapSupabase({ barberId, date, time, duration, excludeId = 
   const dayEnd   = `${date}T23:59:59+07:00`;
   const { data: schedRows } = await supabase
     .from('schedules')
-    .select('start_time, end_time')
+    .select('start_time, end_time, status')
     .eq('barber_id', barberId)
     .gte('start_time', dayStart)
-    .lte('start_time', dayEnd)
-    .not('status', 'in', '("cancelled","rejected")');
+    .lte('start_time', dayEnd);
 
   const newStartMs = new Date(`${date}T${String(time).slice(0,5)}:00+07:00`).getTime();
   const newEndMs   = newStartMs + parseDurationMins(duration) * 60_000;
-  return (schedRows || []).some(s => {
+  return filterBlocking(schedRows).some(s => {
     const sStart = new Date(s.start_time).getTime();
     const sEnd   = new Date(s.end_time).getTime();
     return (newStartMs < sEnd) && (sStart < newEndMs);
@@ -1107,7 +1108,7 @@ async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, addres
 
   const { data: barber } = await supabase
     .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
-  if (!barber?.phone) return;
+  if (!barber?.phone) return { skipped: true, reason: 'barber_phone_missing' };
 
   const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
@@ -1126,40 +1127,11 @@ async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, addres
 }
 
 async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
-  if (!bookingData.barber_id) return; // Skip if no barber assigned
-  const { notifyBarberNewOutletBooking } = require('./services/waNotification');
-
-  // Get barber details
-  const { data: barber } = await supabase
-    .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
-  if (!barber?.phone) {
-    console.warn(`[BarberNotif] Kapster ${barber?.name || bookingData.barber_id} tidak punya nomor phone — notif dilewati`);
-    return;
-  }
-
-  const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
-
-  // Get location label
-  const locationLabel = {
-    bypass: 'RedBox Bypass',
-    samadikun: 'RedBox Samadikun',
-    csb: 'RedBox CSB Mall',
-    sumber: 'RedBox Sumber',
-    tegal: 'RedBox Tegal',
-  }[bookingData.location] || 'RedBox Barbershop';
-
-  const result = await notifyBarberNewOutletBooking({
-    barberPhone: barber.phone,
-    barberName: barber.name,
-    customerName: bookingData.name || bookingData.customer_name || 'Pelanggan',
-    dateStr,
-    timeStr,
-    location: locationLabel,
-    serviceLabel: bookingData.service,
-    price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
-    branch: bookingData.location,
-  });
-  return assertWaSendResult(result, 'Outlet barber notification failed');
+  // Shared by create/resend/pending->confirmed/manual notify: strict branch device
+  // (no Bypass failover), destination = barbers.phone.
+  const r = await notifyBarberOutletBookingLegacy(supabase, bookingData, { formatBookingDateTimeWIB });
+  if (r && r.skipped) console.warn(`[BarberNotif] notif dilewati: ${r.reason}`);
+  return r;
 }
 
 async function _notifyBarberOutletBookingMysql(bookingData) {
@@ -1171,7 +1143,7 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
     'SELECT name, phone FROM barbers WHERE id = ?',
     [bookingData.barber_id]
   );
-  if (!barbers[0]?.phone) return;
+  if (!barbers[0]?.phone) return { skipped: true, reason: 'barber_phone_missing' };
 
   const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
@@ -1749,7 +1721,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         // Send notification to barber regardless of booking type
         try {
           if (type !== 'home_service' && type !== 'wedding') {
-            await _notifyBarberOutletBookingSupabase(supabase, data);
+            // Barber assignment only (customer confirmation was handled above by the
+            // existing outbox path); strict branch device, never redirected to admin.
+            const r = await dispatchBookingNotifications({
+              supabase, bookings: [data], correlationId,
+              deps: {},
+            });
+            const barberLeg = r.deliveries.find(x => x.recipient_role === 'barber');
+            if (barberLeg && barberLeg.status === 'failed') throw new Error(barberLeg.reason || 'barber notification failed');
           } else {
             // Home service / wedding — kapster datang ke lokasi pelanggan
             const addrPattern = type === 'wedding'
@@ -2160,13 +2139,26 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     await supabase.from('customers').upsert({ name: b.name, wa: b.wa, visits: 0, total_spent: 0, last_visit: null }, { onConflict: 'wa', ignoreDuplicates: true });
     linkNewlyCreatedBooking(supabase, { booking: { id: b.id }, phone: b.wa, source: 'booking_create', branch: b.location }).catch(() => {});
 
-    // Notifications (skipped in test mode)
-    if (b.status === 'confirmed' && b.wa && !groupTestCheck.isTest) {
-      _notifyCustomerConfirmedWithRetry(supabase, b, null).catch(() => {});
-    }
-
     // Bridge to Moka with schedule_id passed
     require('./moka/sync').bridgeBookingToMoka(supabase, { ...b, schedule_id: schId }, { req }).catch(() => {});
+  }
+
+  // Notifications (skipped in test mode). Runs only after the atomic group commit,
+  // on the final committed rows, and is AWAITED (Vercel freezes orphaned promises
+  // once the response is sent). Customer gets ONE consolidated confirmation, each
+  // barber gets their own assignment (barbers.phone), admin is a separate alert;
+  // every delivery is independent.
+  if (!groupTestCheck.isTest) {
+    const confirmedMembers = groupResult.bookings.filter(b => b.status === 'confirmed');
+    if (confirmedMembers.length) {
+      try {
+        await dispatchBookingNotifications({
+          supabase, bookings: confirmedMembers, groupId: group_request_id, correlationId, includeAdmin: true,
+        });
+      } catch (e) {
+        console.error('[Booking] group notification orchestration failed:', e.message);
+      }
+    }
   }
 
   return res.status(201).json({
@@ -2190,7 +2182,7 @@ app.post('/api/bookings/:id/resend-notif', adminAuth, async (req, res) => {
   if (error || !bk) return res.status(404).json({ error: error?.message || 'Booking not found' });
 
   const barberName = bk.barbers?.name || null;
-  const results = { customer: false, barber: false };
+  const results = { customer: false, barber: false, barberStatus: null };
 
   // Kirim ke pelanggan
   if (bk.wa) {
@@ -2211,15 +2203,16 @@ app.post('/api/bookings/:id/resend-notif', adminAuth, async (req, res) => {
         const addrMatch = bk.notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/);
         const address = addrMatch?.[1]?.trim() || '';
         if (address) {
-          await _notifyBarberHomeServiceFromBooking(supabase, bk, address);
-          results.barber = true;
+          const r = await _notifyBarberHomeServiceFromBooking(supabase, bk, address);
+          results.barber = !r?.skipped; results.barberStatus = r?.skipped ? `skipped: ${r.reason}` : 'sent';
         }
       } else {
-        await _notifyBarberOutletBookingSupabase(supabase, bk);
-        results.barber = true;
+        const r = await _notifyBarberOutletBookingSupabase(supabase, bk);
+        results.barber = !r?.skipped; results.barberStatus = r?.skipped ? `skipped: ${r.reason}` : 'sent';
       }
     } catch (e) {
       console.warn('[ResendNotif] Barber failed:', e.message);
+      results.barberStatus = `failed: ${e.message}`; // e.g. branch_token_missing — never rerouted via Bypass
     }
   }
 
@@ -3362,8 +3355,8 @@ app.post('/api/admin/notify-barber', adminAuth, async (req, res) => {
     .single();
   if (error || !booking) return res.status(404).json({ error: error?.message || 'Booking not found' });
   try {
-    await _notifyBarberOutletBookingSupabase(supabase, booking);
-    res.json({ ok: true, booking_id, barber_id: booking.barber_id });
+    const r = await _notifyBarberOutletBookingSupabase(supabase, booking);
+    res.json({ ok: !r?.skipped, booking_id, barber_id: booking.barber_id, ...(r?.skipped ? { skipped: r.reason } : {}) });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
