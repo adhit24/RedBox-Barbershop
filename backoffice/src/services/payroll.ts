@@ -33,11 +33,26 @@ export interface RevenueSharingSummaryMetrics {
   unassigned_review_items_count: number;
 }
 
+export interface RevenueSharingDataCoverage {
+  requested_start: string | null;
+  requested_end: string | null;
+  available_start: string | null;
+  available_end: string | null;
+  period_fully_covered: boolean;
+  coverage_status: 'PARTIAL' | 'UNKNOWN' | 'COMPLETE';
+  coverage_basis: string;
+  continuity_proven: boolean;
+  missing_before: boolean;
+  missing_after: boolean;
+}
+
 export interface RevenueSharingPreviewResponse {
   summary: RevenueSharingSummaryMetrics;
   barbers: RevenueSharingBarberSummary[];
+  data_coverage?: RevenueSharingDataCoverage;
   unassigned: {
     service_items_count: number;
+    service_net_amount?: number;
     review_items_count: number;
     sample_unassigned: Array<{
       receipt_number: string;

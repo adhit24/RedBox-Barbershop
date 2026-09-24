@@ -216,6 +216,52 @@ async function setBarberCommissionRate(supabase, { barberId, rate, effectiveFrom
   return inserted;
 }
 
+const PAGE_SIZE = 1000;
+
+/**
+ * Read every row of a query. PostgREST silently caps a single response at 1000 rows,
+ * so any un-paginated read of moka_transaction_items truncates without an error.
+ * `buildQuery` must return a fresh query each call; rows are ordered by the unique `id`
+ * so pages are stable and never skip or repeat rows.
+ */
+async function fetchAllRows(buildQuery, pageSize = PAGE_SIZE) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery().order('id', { ascending: true }).range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: rows, error: null };
+}
+
+/**
+ * Single source of truth for whether a canonical line is commissionable service revenue,
+ * and what it contributes. Used by BOTH the barber summary and the detail drawer so the
+ * two can never diverge. Returns null when the line is not eligible.
+ */
+function evaluateServiceItem(item, barberHistory, barberFallbackRate) {
+  if (item.is_deleted || item.classification !== CLASSIFICATION.NON_STOCK_SERVICE) return null;
+  const qty = Number(item.quantity) || 1;
+  const effectiveQty = Math.max(0, qty - (Number(item.refunded_quantity) || 0));
+  if (effectiveQty <= 0) return null;
+
+  const grossRaw = Number(item.gross_amount) || 0;
+  const discountRaw = Number(item.discount_amount) || 0;
+  const netRaw = item.net_amount != null ? Number(item.net_amount) : (grossRaw - discountRaw);
+
+  // Canonical normalizer stores the original line totals plus refunded_quantity. Its commission-base
+  // authority prorates a partially refunded line by the remaining quantity, so Revenue Sharing must
+  // use the same semantics instead of keeping the full line value while only reducing the item count.
+  const activeRatio = qty > 0 ? effectiveQty / qty : 0;
+  const gross = grossRaw * activeRatio;
+  const discount = discountRaw * activeRatio;
+  const net = netRaw * activeRatio;
+
+  const rateRes = resolveBarberRateForDate(barberHistory, barberFallbackRate, item.tx_date);
+  return { gross, discount, net, effectiveQty, rateRes };
+}
+
 /**
  * Pure calculation function for Revenue Sharing Preview.
  * Takes raw items, barbers list, and rate history rows and computes preview aggregates.
@@ -259,8 +305,11 @@ function calculateRevenueSharingPreview({
     const bId = item.barber_id;
     if (!bId) {
       if (item.classification === CLASSIFICATION.NON_STOCK_SERVICE) {
-        unassignedServiceItems.push(item);
-      } else if (item.classification === CLASSIFICATION.REVIEW_REQUIRED) {
+        // Apply the SAME eligibility/refund/deletion evaluator used by barber summary + detail.
+        // There is no barber rate for unassigned rows, but rate is irrelevant to net service revenue.
+        const ev = evaluateServiceItem(item, [], null);
+        if (ev) unassignedServiceItems.push({ item, evaluated: ev });
+      } else if (!item.is_deleted && item.classification === CLASSIFICATION.REVIEW_REQUIRED) {
         unassignedReviewItems.push(item);
       }
       continue;
@@ -302,36 +351,20 @@ function calculateRevenueSharingPreview({
         continue;
       }
 
-      if (item.classification === CLASSIFICATION.NON_STOCK_SERVICE) {
-        const qty = Number(item.quantity) || 1;
-        const refunded = Number(item.refunded_quantity) || 0;
-        const effectiveQty = Math.max(0, qty - refunded);
-
-        // If completely refunded, skip from commissionable base
-        if (effectiveQty <= 0) continue;
-
-        const gross = Number(item.gross_amount) || 0;
-        const disc = Number(item.discount_amount) || 0;
-        const net = item.net_amount != null ? Number(item.net_amount) : (gross - disc);
-
-        grossServiceRevenue += gross;
-        discountTotal += disc;
-        netServiceRevenue += net;
-        serviceItemCount += effectiveQty;
+      // Fully refunded / non-service lines evaluate to null and stay out of the base
+      const ev = evaluateServiceItem(item, barberHistory, barber.commission_rate);
+      if (ev) {
+        grossServiceRevenue += ev.gross;
+        discountTotal += ev.discount;
+        netServiceRevenue += ev.net;
+        serviceItemCount += ev.effectiveQty;
         if (item.receipt_number) receiptsSet.add(item.receipt_number);
 
-        // Resolve rate for this item's specific transaction date
-        const rateRes = resolveBarberRateForDate(
-          barberHistory,
-          barber.commission_rate,
-          item.tx_date
-        );
-
-        if (rateRes.rate == null) {
+        if (ev.rateRes.rate == null) {
           missingRateCount++;
         } else {
-          ratesUsedSet.add(rateRes.rate);
-          calculatedCommission += net * rateRes.rate;
+          ratesUsedSet.add(ev.rateRes.rate);
+          calculatedCommission += ev.net * ev.rateRes.rate;
         }
       }
     }
@@ -420,16 +453,66 @@ function calculateRevenueSharingPreview({
     },
     barbers: filteredSummaries,
     unassigned: {
-      service_items_count: unassignedServiceItems.length,
+      service_items_count: unassignedServiceItems.reduce((sum, entry) => sum + entry.evaluated.effectiveQty, 0),
+      service_net_amount: round(unassignedServiceItems.reduce((sum, entry) => sum + entry.evaluated.net, 0)),
       review_items_count: unassignedReviewItems.length,
-      sample_unassigned: unassignedServiceItems.slice(0, 10).map((i) => ({
-        receipt_number: i.receipt_number,
-        item_name: i.item_name,
-        net_amount: i.net_amount,
-        tx_date: i.tx_date,
+      sample_unassigned: unassignedServiceItems.slice(0, 10).map(({ item, evaluated }) => ({
+        receipt_number: item.receipt_number,
+        item_name: item.item_name,
+        net_amount: round(evaluated.net),
+        tx_date: item.tx_date,
       })),
     },
   };
+}
+
+/**
+ * Pure builder for the data_coverage block. Compares the requested period with the date
+ * range for which canonical moka_transaction_items actually exist. Metadata only: it never
+ * changes any revenue number, it tells the UI when a total covers less than the full period.
+ */
+function buildDataCoverage({ requestedStart, requestedEnd, availableStart, availableEnd }) {
+  const reqStart = requestedStart ? formatDate(requestedStart) : null;
+  const reqEnd = requestedEnd ? formatDate(requestedEnd) : null;
+  const avStart = availableStart ? formatDate(availableStart) : null;
+  const avEnd = availableEnd ? formatDate(availableEnd) : null;
+
+  const missingBefore = Boolean(reqStart) && (!avStart || avStart > reqStart);
+  const missingAfter = Boolean(reqEnd) && (!avEnd || avEnd < reqEnd);
+
+  const edgeGap = missingBefore || missingAfter || !avStart || !avEnd;
+
+  return {
+    requested_start: reqStart,
+    requested_end: reqEnd,
+    available_start: avStart,
+    available_end: avEnd,
+    // Date bounds can PROVE missing edges, but cannot prove that every interior business date was
+    // successfully synced. Until a persisted per-date/per-branch sync authority is available, never
+    // claim full coverage from MIN/MAX transaction dates alone.
+    period_fully_covered: false,
+    coverage_status: edgeGap ? 'PARTIAL' : 'UNKNOWN',
+    coverage_basis: 'CANONICAL_ITEM_DATE_BOUNDS',
+    continuity_proven: false,
+    missing_before: missingBefore,
+    missing_after: missingAfter,
+  };
+}
+
+/**
+ * Earliest and latest canonical transaction date for the branch scope. Deliberately ignores
+ * the date range, barber and status filters: coverage describes the data, not the view.
+ */
+async function fetchCanonicalDateBounds(supabase, branch) {
+  const edge = async (ascending) => {
+    let q = supabase.from('moka_transaction_items').select('tx_date').eq('is_deleted', false);
+    if (branch && branch !== 'all') q = q.eq('outlet_slug', branch);
+    const { data, error } = await q.order('tx_date', { ascending }).limit(1);
+    if (error) throw new Error(`Failed to check data coverage: ${error.message}`);
+    return data && data[0] ? formatDate(data[0].tx_date) : null;
+  };
+  const [availableStart, availableEnd] = await Promise.all([edge(true), edge(false)]);
+  return { availableStart, availableEnd };
 }
 
 /**
@@ -480,31 +563,32 @@ async function getRevenueSharingPreview(supabase, {
   // 2. Fetch rate history for these barbers
   const rateHistory = await fetchBarberRateHistory(supabase, barberIds);
 
-  // 3. Fetch canonical moka_transaction_items
-  let itemsQuery = supabase
-    .from('moka_transaction_items')
-    .select(`
-      id, receipt_number, source_line_key, outlet_slug, tx_date, tx_time,
-      item_name, variant_name, category_name, quantity, gross_amount, discount_amount,
-      net_amount, classification, barber_id, barber_name_raw, is_deleted, refunded_quantity
-    `)
-    .eq('is_deleted', false);
+  // 3. Fetch canonical moka_transaction_items (paginated: PostgREST caps a response at 1000 rows)
+  const buildItemsQuery = () => {
+    let q = supabase
+      .from('moka_transaction_items')
+      .select(`
+        id, receipt_number, source_line_key, outlet_slug, tx_date, tx_time,
+        item_name, variant_name, category_name, quantity, gross_amount, discount_amount,
+        net_amount, classification, barber_id, barber_name_raw, is_deleted, refunded_quantity
+      `)
+      .eq('is_deleted', false);
+    if (dateFrom) q = q.gte('tx_date', dateFrom);
+    if (dateTo) q = q.lte('tx_date', dateTo);
+    if (effectiveBranch && effectiveBranch !== 'all') q = q.eq('outlet_slug', effectiveBranch);
+    if (barberId && barberId !== 'all') q = q.eq('barber_id', barberId);
+    return q;
+  };
 
-  if (dateFrom) itemsQuery = itemsQuery.gte('tx_date', dateFrom);
-  if (dateTo) itemsQuery = itemsQuery.lte('tx_date', dateTo);
-  if (effectiveBranch && effectiveBranch !== 'all') {
-    itemsQuery = itemsQuery.eq('outlet_slug', effectiveBranch);
-  }
-  if (barberId && barberId !== 'all') {
-    itemsQuery = itemsQuery.eq('barber_id', barberId);
-  }
-
-  const { data: items, error: itemsErr } = await itemsQuery;
+  const { data: items, error: itemsErr } = await fetchAllRows(buildItemsQuery);
   if (itemsErr) {
     throw new Error(`Failed to load transaction items: ${itemsErr.message}`);
   }
 
-  return calculateRevenueSharingPreview({
+  // 4. Coverage: does canonical data actually span the requested period?
+  const bounds = await fetchCanonicalDateBounds(supabase, effectiveBranch);
+
+  const preview = calculateRevenueSharingPreview({
     items: items || [],
     barbers: barbers || [],
     rateHistory,
@@ -514,6 +598,16 @@ async function getRevenueSharingPreview(supabase, {
     barberFilter: barberId,
     statusFilter: status,
   });
+
+  return {
+    ...preview,
+    data_coverage: buildDataCoverage({
+      requestedStart: dateFrom,
+      requestedEnd: dateTo,
+      availableStart: bounds.availableStart,
+      availableEnd: bounds.availableEnd,
+    }),
+  };
 }
 
 /**
@@ -548,28 +642,33 @@ async function getBarberRevenueDetail(supabase, {
   // 2. Fetch rate history
   const rateHistory = await fetchBarberRateHistory(supabase, [barberId]);
 
-  // 3. Fetch all transaction items in date range for this barber
-  let query = supabase
-    .from('moka_transaction_items')
-    .select(`
-      id, receipt_number, source_line_key, outlet_slug, tx_date, tx_time,
-      item_name, variant_name, category_name, quantity, gross_amount, discount_amount,
-      net_amount, classification, classification_reason, barber_id, barber_name_raw,
-      is_deleted, refunded_quantity
-    `)
-    .eq('barber_id', barberId)
-    .eq('is_deleted', false)
-    .order('tx_date', { ascending: false });
+  // 3. Fetch all transaction items in date range for this barber (paginated, same cap as preview)
+  const buildDetailQuery = () => {
+    let q = supabase
+      .from('moka_transaction_items')
+      .select(`
+        id, receipt_number, source_line_key, outlet_slug, tx_date, tx_time,
+        item_name, variant_name, category_name, quantity, gross_amount, discount_amount,
+        net_amount, classification, classification_reason, barber_id, barber_name_raw,
+        is_deleted, refunded_quantity
+      `)
+      .eq('barber_id', barberId)
+      .eq('is_deleted', false);
+    if (dateFrom) q = q.gte('tx_date', dateFrom);
+    if (dateTo) q = q.lte('tx_date', dateTo);
+    return q;
+  };
 
-  if (dateFrom) query = query.gte('tx_date', dateFrom);
-  if (dateTo) query = query.lte('tx_date', dateTo);
-
-  const { data: rawItems, error: iErr } = await query;
+  const { data: rawItems, error: iErr } = await fetchAllRows(buildDetailQuery);
   if (iErr) {
     throw new Error(`Failed to load barber transaction items: ${iErr.message}`);
   }
 
-  const items = rawItems || [];
+  // Newest first for display (rows are fetched ordered by id for stable paging)
+  const items = (rawItems || []).sort(
+    (a, b) => String(b.tx_date).localeCompare(String(a.tx_date))
+      || String(b.tx_time || '').localeCompare(String(a.tx_time || ''))
+  );
 
   const serviceItems = [];
   const excludedItems = [];
@@ -580,31 +679,32 @@ async function getBarberRevenueDetail(supabase, {
   let totalNet = 0;
   let totalCommission = 0;
   let missingRateCount = 0;
+  let serviceItemCount = 0;
 
   for (const item of items) {
-    const gross = Number(item.gross_amount) || 0;
-    const disc = Number(item.discount_amount) || 0;
-    const net = item.net_amount != null ? Number(item.net_amount) : (gross - disc);
-    const qty = Number(item.quantity) || 1;
-    const refunded = Number(item.refunded_quantity) || 0;
-    const effectiveQty = Math.max(0, qty - refunded);
+    const net = item.net_amount != null
+      ? Number(item.net_amount)
+      : (Number(item.gross_amount) || 0) - (Number(item.discount_amount) || 0);
 
     if (item.classification === CLASSIFICATION.NON_STOCK_SERVICE) {
-      if (effectiveQty <= 0) continue; // skip refunded
+      // Same evaluator as the preview table, so summary and drawer cannot diverge
+      const ev = evaluateServiceItem(item, rateHistory, barber.commission_rate);
+      if (!ev) continue; // fully refunded / deleted
 
-      const rateRes = resolveBarberRateForDate(rateHistory, barber.commission_rate, item.tx_date);
+      const rateRes = ev.rateRes;
       let itemComm = null;
 
       if (rateRes.rate == null) {
         missingRateCount++;
       } else {
-        itemComm = round(net * rateRes.rate);
+        itemComm = round(ev.net * rateRes.rate);
         totalCommission += itemComm;
       }
 
-      totalGross += gross;
-      totalDiscount += disc;
-      totalNet += net;
+      totalGross += ev.gross;
+      totalDiscount += ev.discount;
+      totalNet += ev.net;
+      serviceItemCount += ev.effectiveQty;
 
       serviceItems.push({
         id: item.id,
@@ -613,10 +713,10 @@ async function getBarberRevenueDetail(supabase, {
         tx_time: item.tx_time,
         item_name: item.item_name,
         variant_name: item.variant_name,
-        quantity: effectiveQty,
-        gross_amount: gross,
-        discount_amount: disc,
-        net_amount: net,
+        quantity: ev.effectiveQty,
+        gross_amount: ev.gross,
+        discount_amount: ev.discount,
+        net_amount: ev.net,
         rate_used: rateRes.rate,
         rate_source: rateRes.rate_source,
         effective_from: rateRes.effective_from,
@@ -668,7 +768,7 @@ async function getBarberRevenueDetail(supabase, {
       effective_from: latestRate.effective_from,
     },
     summary: {
-      service_item_count: serviceItems.length,
+      service_item_count: serviceItemCount,
       excluded_item_count: excludedItems.length,
       review_item_count: reviewItems.length,
       gross_service_revenue: round(totalGross),
@@ -696,6 +796,9 @@ module.exports = {
   formatDate,
   dayBefore,
   resolveBarberRateForDate,
+  evaluateServiceItem,
+  buildDataCoverage,
+  fetchAllRows,
   fetchBarberRateHistory,
   setBarberCommissionRate,
   calculateRevenueSharingPreview,
