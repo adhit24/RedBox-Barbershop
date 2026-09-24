@@ -246,9 +246,18 @@ function evaluateServiceItem(item, barberHistory, barberFallbackRate) {
   const effectiveQty = Math.max(0, qty - (Number(item.refunded_quantity) || 0));
   if (effectiveQty <= 0) return null;
 
-  const gross = Number(item.gross_amount) || 0;
-  const discount = Number(item.discount_amount) || 0;
-  const net = item.net_amount != null ? Number(item.net_amount) : (gross - discount);
+  const grossRaw = Number(item.gross_amount) || 0;
+  const discountRaw = Number(item.discount_amount) || 0;
+  const netRaw = item.net_amount != null ? Number(item.net_amount) : (grossRaw - discountRaw);
+
+  // Canonical normalizer stores the original line totals plus refunded_quantity. Its commission-base
+  // authority prorates a partially refunded line by the remaining quantity, so Revenue Sharing must
+  // use the same semantics instead of keeping the full line value while only reducing the item count.
+  const activeRatio = qty > 0 ? effectiveQty / qty : 0;
+  const gross = grossRaw * activeRatio;
+  const discount = discountRaw * activeRatio;
+  const net = netRaw * activeRatio;
+
   const rateRes = resolveBarberRateForDate(barberHistory, barberFallbackRate, item.tx_date);
   return { gross, discount, net, effectiveQty, rateRes };
 }
@@ -296,8 +305,11 @@ function calculateRevenueSharingPreview({
     const bId = item.barber_id;
     if (!bId) {
       if (item.classification === CLASSIFICATION.NON_STOCK_SERVICE) {
-        unassignedServiceItems.push(item);
-      } else if (item.classification === CLASSIFICATION.REVIEW_REQUIRED) {
+        // Apply the SAME eligibility/refund/deletion evaluator used by barber summary + detail.
+        // There is no barber rate for unassigned rows, but rate is irrelevant to net service revenue.
+        const ev = evaluateServiceItem(item, [], null);
+        if (ev) unassignedServiceItems.push({ item, evaluated: ev });
+      } else if (!item.is_deleted && item.classification === CLASSIFICATION.REVIEW_REQUIRED) {
         unassignedReviewItems.push(item);
       }
       continue;
@@ -441,14 +453,14 @@ function calculateRevenueSharingPreview({
     },
     barbers: filteredSummaries,
     unassigned: {
-      service_items_count: unassignedServiceItems.length,
-      service_net_amount: round(unassignedServiceItems.reduce((sum, i) => sum + (Number(i.net_amount) || 0), 0)),
+      service_items_count: unassignedServiceItems.reduce((sum, entry) => sum + entry.evaluated.effectiveQty, 0),
+      service_net_amount: round(unassignedServiceItems.reduce((sum, entry) => sum + entry.evaluated.net, 0)),
       review_items_count: unassignedReviewItems.length,
-      sample_unassigned: unassignedServiceItems.slice(0, 10).map((i) => ({
-        receipt_number: i.receipt_number,
-        item_name: i.item_name,
-        net_amount: i.net_amount,
-        tx_date: i.tx_date,
+      sample_unassigned: unassignedServiceItems.slice(0, 10).map(({ item, evaluated }) => ({
+        receipt_number: item.receipt_number,
+        item_name: item.item_name,
+        net_amount: round(evaluated.net),
+        tx_date: item.tx_date,
       })),
     },
   };
@@ -468,12 +480,20 @@ function buildDataCoverage({ requestedStart, requestedEnd, availableStart, avail
   const missingBefore = Boolean(reqStart) && (!avStart || avStart > reqStart);
   const missingAfter = Boolean(reqEnd) && (!avEnd || avEnd < reqEnd);
 
+  const edgeGap = missingBefore || missingAfter || !avStart || !avEnd;
+
   return {
     requested_start: reqStart,
     requested_end: reqEnd,
     available_start: avStart,
     available_end: avEnd,
-    period_fully_covered: !missingBefore && !missingAfter && Boolean(avStart),
+    // Date bounds can PROVE missing edges, but cannot prove that every interior business date was
+    // successfully synced. Until a persisted per-date/per-branch sync authority is available, never
+    // claim full coverage from MIN/MAX transaction dates alone.
+    period_fully_covered: false,
+    coverage_status: edgeGap ? 'PARTIAL' : 'UNKNOWN',
+    coverage_basis: 'CANONICAL_ITEM_DATE_BOUNDS',
+    continuity_proven: false,
     missing_before: missingBefore,
     missing_after: missingAfter,
   };
