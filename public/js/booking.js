@@ -945,7 +945,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  promises.push((async () => {
  try {
  const sRes = await fetch(
- `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}`,
+ `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}&blocking=1`,
  { signal: AbortSignal.timeout(25000) }
  );
  if (sRes.ok) {
@@ -999,7 +999,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (Date.now() - startedAt > maxMs) return;
  try {
  const sRes = await fetch(
- `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}&_t=${Date.now()}`,
+ `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}&blocking=1&_t=${Date.now()}`,
  { signal: AbortSignal.timeout(25000) }
  );
  if (!sRes.ok) {
