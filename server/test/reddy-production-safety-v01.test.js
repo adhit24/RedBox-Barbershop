@@ -17,6 +17,33 @@ const { EVENT_DEFINITIONS } = require('../services/reddyEvaluationMonitoring');
 const { sanitizeInboundLifecycleTelemetry, sanitizeDataAuthorityTelemetry } = require('../orchestrator/telemetry');
 const { REDBOX_KNOWLEDGE } = require('../agents/reddy/knowledge/redboxKnowledge');
 
+const { resetServicesCatalogCache } = require('../services/servicesCatalog');
+
+// c2079db8: a CURRENT price claim must be verified against the live services catalog
+// (fail closed otherwise), so tests that exercise the final outbound guard with a price
+// must provide the authoritative catalog. Non-catalog tables are not expected here.
+function withServicesCatalog(base = {}) {
+  resetServicesCatalogCache();
+  return {
+    ...base,
+    from(table) {
+      if (table !== 'services') throw new Error(`unexpected table in test fixture: ${table}`);
+      return {
+        select() {
+          return {
+            eq() {
+              return Promise.resolve({
+                data: [{ id: 'hair-spa', name: 'Hair Spa', price: 110000, duration_minutes: 60, is_active: true }],
+                error: null,
+              });
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 // ── PRICE TESTS (1–7) ───────────────────────────────────────────────────
 
 test('TEST 1: generic haircut RpXX.XXX without specific service match does NOT become Rp95.000', () => {
@@ -74,7 +101,7 @@ test('TEST 7: placeholder never reaches realSend', async () => {
   };
   const send = createGuardedSend({
     realSend: fakeRealSend,
-    supabase: fakeSupabase,
+    supabase: withServicesCatalog(fakeSupabase),
     inboundEventRowId: 'evt-1',
   });
 
@@ -98,7 +125,7 @@ test('TEST 8: final guard runs before contentHash', async () => {
   };
   const send = createGuardedSend({
     realSend: async () => ({ status: true }),
-    supabase: fakeSupabase,
+    supabase: withServicesCatalog(fakeSupabase),
     inboundEventRowId: 'evt-2',
   });
 
@@ -133,7 +160,7 @@ test('TEST 10: observeMessage receives final text', async () => {
   let observedText = null;
   const send = createGuardedSend({
     realSend: async () => ({ status: true }),
-    supabase: { rpc: async () => ({ data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }) },
+    supabase: withServicesCatalog({ rpc: async () => ({ data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }) }),
     inboundEventRowId: 'evt-4',
     observeMessage: async (text) => { observedText = text; },
   });
@@ -145,7 +172,7 @@ test('TEST 11: realSend receives same final text', async () => {
   let sentText = null;
   const send = createGuardedSend({
     realSend: async (to, text) => { sentText = text; return { status: true }; },
-    supabase: { rpc: async () => ({ data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }) },
+    supabase: withServicesCatalog({ rpc: async () => ({ data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }) }),
     inboundEventRowId: 'evt-5',
   });
   await send('628123456789', 'Hair Spa RpXX.XXX kak', { branch: 'bypass', serviceId: 'hair-spa' });
@@ -263,7 +290,7 @@ test('TEST 26: Task16 observer receives exact final post-guard text', async () =
   let observedText = null;
   const send = createGuardedSend({
     realSend: async () => ({ status: true }),
-    supabase: { rpc: async () => ({ data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }) },
+    supabase: withServicesCatalog({ rpc: async () => ({ data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }) }),
     inboundEventRowId: 'evt-26',
     observeMessage: async (txt) => { observedText = txt; },
   });

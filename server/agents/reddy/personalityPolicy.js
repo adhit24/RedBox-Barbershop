@@ -355,7 +355,7 @@ function extractDurationMentions(text) {
 // Contexts involving historical bookings, past transactions, previous prices,
 // comparisons ("dulu... sekarang..."), refunds, or disputes must NEVER have their
 // historical quotes corrupted by current catalog numbers or service renamings.
-const HISTORICAL_OR_DISPUTE_CONTEXT_REGEX = /\b(dulu|dahulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu)\b/i;
+const HISTORICAL_OR_DISPUTE_CONTEXT_REGEX = /\b(dulu|dahulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu|komplain|complaint|dispute|refund|selisih|beda\s+harga)\b/i;
 
 // Current context markers to distinguish mixed historical + current statements
 const CURRENT_CONTEXT_REGEX = /\b(sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya|terbaru|yang\s+berlaku|harga\s+baru|layanan\s+baru|booking\s+baru|transaksi\s+baru)\b/i;
@@ -381,10 +381,35 @@ function getClauseForSpan(text, spanIndex, spanLength = 0) {
   return { clauseText: text.slice(clauseStart, clauseEnd).trim(), start: clauseStart, end: clauseEnd };
 }
 
+function getSentenceForSpan(text, spanIndex, spanLength = 0) {
+  if (typeof text !== 'string' || !text) return '';
+  const boundary = /(?:(?<!\d)\.(?!\d)|(?<=\d)\.(?=\s|$)|[!?;\n\r])/g;
+  let start = 0;
+  let end = text.length;
+  let match;
+  while ((match = boundary.exec(text)) !== null) {
+    if (match.index + match[0].length <= spanIndex) start = match.index + match[0].length;
+    if (match.index >= spanIndex + spanLength) { end = match.index; break; }
+  }
+  return text.slice(start, end).trim();
+}
+
+// A dispute keyword marks the figure as the customer's transaction fact ("komplain ...
+// Rp360.000", "refund ... Rp360.000") - but NOT when the same clause is a generic
+// price statement ("Beda harga Rp75.000 biasanya untuk potongan standar"): that is a
+// current claim wearing a dispute word and must still be verified against the catalog.
+const DISPUTE_KEYWORD_REGEX = /\b(komplain|complaint|dispute|refund|selisih|beda\s+harga)\b/i;
+const GENERAL_PRICE_STATEMENT_REGEX = /\b(biasanya|umumnya|normalnya|rata-rata|standar)\b/i;
+const NON_DISPUTE_HISTORICAL_REGEX = /\b(dulu|dahulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu)\b/i;
+
 function isHistoricalSpan(text, spanIndex, spanLength = 0) {
   if (typeof text !== 'string' || !text) return false;
   if (!HISTORICAL_OR_DISPUTE_CONTEXT_REGEX.test(text)) return false;
   const { clauseText } = getClauseForSpan(text, spanIndex, spanLength);
+  if (DISPUTE_KEYWORD_REGEX.test(clauseText) && GENERAL_PRICE_STATEMENT_REGEX.test(clauseText)
+    && !NON_DISPUTE_HISTORICAL_REGEX.test(clauseText)) {
+    return false;
+  }
   const hasHistorical = HISTORICAL_OR_DISPUTE_CONTEXT_REGEX.test(clauseText);
   const hasCurrent = CURRENT_CONTEXT_REGEX.test(clauseText);
   if (hasHistorical && !hasCurrent) return true;
@@ -469,7 +494,14 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
     const tier = (REDBOX_KNOWLEDGE.membership_public?.tiers || []).find(t =>
       new RegExp(`\\b${t.id}\\b`, 'i').test(clause) && t.price_idr === mention.numeric);
     if (tier && !/wedding/i.test(clause)) { publicPriceIndexes.add(mention.index); continue; }
-    const local = resolveAllServiceMentions(clause, rows);
+    let local = resolveAllServiceMentions(clause, rows);
+    // "harga X sekarang adalah Rp..." is split by the transition word "sekarang";
+    // fall back to the SAME sentence (never another one) when it names exactly one service.
+    if (!local.length) {
+      const sentence = getSentenceForSpan(replyText, mention.index, mention.raw.length);
+      const inSentence = resolveAllServiceMentions(sentence, rows);
+      if (inSentence.length === 1) local = inSentence;
+    }
     const explicit = options.serviceId && findServiceRow(rows, { id: options.serviceId });
     if (!local.length && !explicit) return unverifiedPrice();
     if (local.length > 1 && extractConcreteRupiahMentions(clause).length > 1) return unverifiedPrice();

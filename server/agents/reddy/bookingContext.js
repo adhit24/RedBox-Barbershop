@@ -228,6 +228,29 @@ function reconstructBookingContextFromTurns(turns = [], options = {}) {
     );
 }
 
+/**
+ * True when the customer is mid-flow and a bare "ok/baik/siap" is an ANSWER that
+ * must continue through normal contextual processing, not a standalone closing:
+ * booking context already collected (service/branch/barber/date/time), a pending
+ * clarification, or an assistant question still waiting for a reply.
+ * Expired sessions and empty history never count as an active flow.
+ */
+function hasActiveConversationalFlow(turns = [], options = {}) {
+  const { sessionStatus = null, canonicalBarbers = [] } = options;
+  if (sessionStatus === 'expired' || !Array.isArray(turns) || turns.length === 0) return false;
+
+  const ctx = reconstructBookingContextFromTurns(turns, { sessionStatus, canonicalBarbers });
+  if (ctx.service?.id || ctx.service?.name || ctx.branch?.slug || ctx.barber?.id || ctx.barber?.name
+    || ctx.date?.value || ctx.time?.value || ctx.time_preference?.value || ctx.clarification_required) {
+    return true;
+  }
+
+  const lastAssistant = [...turns].reverse().find((t) => t && t.role === 'assistant' && typeof t.content === 'string');
+  const lastTurn = turns[turns.length - 1];
+  return Boolean(lastAssistant && lastTurn === lastAssistant
+    && /\?[\s\p{Extended_Pictographic}]*$/u.test(lastAssistant.content.trim()));
+}
+
 function buildPrefilledBookingUrl(context) {
   const params = new URLSearchParams();
   if (context?.branch?.slug) params.set('branch', context.branch.slug);
@@ -255,5 +278,6 @@ module.exports = {
   createEmptyBookingContext,
   extractBookingContext,
   reconstructBookingContextFromTurns,
+  hasActiveConversationalFlow,
   buildPrefilledBookingUrl,
 };

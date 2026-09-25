@@ -62,7 +62,7 @@ test('unrelated names are never matched (roster is exact, not fuzzy)', () => {
   assert.equal(classified, null);
 });
 
-test('end-to-end: reddyAdapter answers a bare barber name deterministically (no LLM call)', async () => {
+test('end-to-end: reddyAdapter answers a bare barber name deterministically (no LLM call); existence needs no service (c2079db8 slot contract)', async () => {
   const observations = { openAI: 0 };
   const result = await executeReddyAgent({
     from: '628100000009',
@@ -74,6 +74,7 @@ test('end-to-end: reddyAdapter answers a bare barber name deterministically (no 
     callOpenAI: async () => { observations.openAI += 1; throw new Error('must not be called'); },
     sendWA: async (_to, reply) => ({ status: true, reply }),
     loadBarbers: async () => ({ status: 'verified', barbers: [ABDUL, SOFYAN, DODI], reason: null }),
+    getSchedule: async () => ({ status: 'scheduled', source: 'working_hours' }),
     getAvailability: async () => ({ success: true, reason_code: 'available', available_slots: ['17:00', '18:00'] }),
     supabase: {},
     logBookingTelemetry: () => {},
@@ -81,7 +82,10 @@ test('end-to-end: reddyAdapter answers a bare barber name deterministically (no 
   });
   assert.equal(observations.openAI, 0);
   assert.equal(result.used, 'reddy_barber_availability_guard');
-  assert.match(result.reply, /17:00 dan 18:00/);
+  // Slots need a service duration (none in context here), but "is he working today?" does not:
+  // answered from schedule data, no invented slot list, no forced service question.
+  assert.match(result.reply, /Abdul dijadwalkan masuk hari ini/);
+  assert.doesNotMatch(result.reply, /17:00|mau layanan apa\?/);
 });
 
 test('end-to-end: booking-write phrase with a bare barber name still goes through normal (non-availability) handling', async () => {

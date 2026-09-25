@@ -187,7 +187,7 @@ const {
   getActiveHandoffState,
   appendCustomerMessage: appendHandoffCustomerMessage,
 } = require('../../server/services/humanHandoff');
-const { reconstructBookingContextFromTurns } = require('../../server/agents/reddy/bookingContext');
+const { reconstructBookingContextFromTurns, hasActiveConversationalFlow } = require('../../server/agents/reddy/bookingContext');
 const {
   isReddyEnabled,
   admitInboundEvent,
@@ -1759,7 +1759,11 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   if (classification?.intent === 'business_correspondence' || businessFollowup) {
     return sendAndPersistFinalReply('Terima kasih, Kak. Untuk proposal, sponsorship, atau penawaran kerja sama, silakan lanjutkan dengan petugas cabang yang mengarahkan. Boleh tuliskan nama organisasi dan tujuan pengajuannya? Aku belum bisa memastikan proposal sudah ditinjau atau disetujui.', 'business_correspondence');
   }
-  if (/^(?:siap|oke|ok|baik|makasih|terima kasih)(?:\s+(?:mas|kak|ya|pak|bang))?[.!\s]*$/i.test(text.trim())) {
+  // Standalone acknowledgement shortcut: ONLY when no active flow is waiting for this
+  // answer. Mid booking/service/barber/branch/date/time selection or a pending
+  // clarification, "ok/baik/siap" continues through the normal contextual path.
+  if (/^(?:siap|oke|ok|baik|makasih|terima kasih)(?:\s+(?:mas|kak|ya|pak|bang))?[.!\s]*$/i.test(text.trim())
+    && !hasActiveConversationalFlow(activeHistoryTurns, { sessionStatus: conversationContext?.sessionStatus })) {
     return sendAndPersistFinalReply('Siap, Kak.', 'acknowledgment');
   }
 
@@ -2165,7 +2169,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       : (orchDecision.response_strategy === 'acknowledge_correction_or_clarify_neutral'
         ? 'Sepertinya aku salah nangkep tadi. Maksud Kak yang mana?'
         : (orchDecision.response_strategy === 'acknowledge_only'
-          ? 'Siap Kak.'
+          ? 'Siap, Kak.'
           : (orchDecision.response_strategy === 'close_conversation'
             ? 'Siap Kak, terima kasih.'
             : (orchDecision.conversational_act === 'temporal_followup' && temporalPeriod

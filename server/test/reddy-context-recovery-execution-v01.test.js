@@ -134,7 +134,7 @@ test('X6. orchestrator classifier failure -> fallback_unknown -> clarify_short r
   assert.doesNotMatch(runtime.reply, MEMBERSHIP_WORDING);
 });
 
-// 7. "Aman kak" => "Siap Kak." => no membership wording.
+// 7. "Aman kak" => "Siap, Kak." => no membership wording.
 test('X7. "Aman kak" after prior membership context renders the plain acknowledgement', async () => {
   const runtime = await handleMessage({
     from: '62811120007', text: 'Aman kak', branchFromPayload: 'bypass',
@@ -143,7 +143,7 @@ test('X7. "Aman kak" after prior membership context renders the plain acknowledg
     orchestrate: (params) => orchestrateMessage(params, { classifier: classifier('general_question') }),
   }));
 
-  assert.equal(runtime.reply, 'Siap Kak.');
+  assert.equal(runtime.reply, 'Siap, Kak.');
   assert.doesNotMatch(runtime.reply, MEMBERSHIP_WORDING);
 });
 
@@ -226,6 +226,6 @@ test('X11 (multilingual parity). acknowledge_correction_or_clarify_neutral match
 
   // Both are the existing, pre-existing-limitation Indonesian deterministic
   // strings — parity proven, no new language regression introduced here.
-  assert.equal(ackRuntime.reply, 'Siap Kak.');
+  assert.equal(ackRuntime.reply, 'Siap, Kak.');
   assert.equal(correctionRuntime.reply, 'Sepertinya aku salah nangkep tadi. Maksud Kak yang mana?');
 });

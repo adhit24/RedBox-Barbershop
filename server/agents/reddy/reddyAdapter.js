@@ -87,6 +87,38 @@ function describeAvailabilityDate(date) {
  * (spec §12/§13). Every branch is filled ONLY from the tool result — never
  * guessed — and never claims a slot is reserved/held/locked.
  */
+// A customer asking for open/bookable hours ("kosong jam berapa", "slot", "bisa booking")
+// needs a service duration; a customer only asking whether the barber is working
+// ("ada hari ini?", "masuk?") does not.
+const BOOKABLE_SLOT_QUERY_PATTERN = /\b(kosong|slot|jam\s+berapa|jam\s+brp|book(?:ing)?|bisa\s+jam|available\s+jam|tersedia\s+jam|jam\s*\d)/i;
+
+function isBookableSlotQuery(text) {
+  return BOOKABLE_SLOT_QUERY_PATTERN.test(String(text || ''));
+}
+
+// Deterministic reply when slots cannot be computed for lack of a service. Never claims
+// the barber is working unless the roster/schedule data says so, and never asks for a
+// service when the customer only asked whether the barber is in.
+function buildServiceRequiredBarberReply({ barberName, date, scheduleStatus, slotQuery }) {
+  const name = `Mas ${barberName}`;
+  const dateWord = describeAvailabilityDate(date);
+  const askService = 'Untuk cek jam kosong yang bisa dibooking, mau layanan apa? Durasi layanan menentukan slot yang tersedia.';
+  const status = scheduleStatus?.status;
+
+  if (status === 'not_scheduled') {
+    return `${dateWord.capitalized} ${name} tidak tercatat dijadwalkan masuk, Kak.`;
+  }
+  if (status === 'scheduled') {
+    const isToday = date === jakartaDate();
+    if (slotQuery) return `${name} dijadwalkan masuk ${dateWord.lower}, Kak. ${askService}`;
+    return `${name} dijadwalkan masuk ${dateWord.lower}, Kak.${isToday ? ' Aku belum punya data check-in untuk memastikan beliau sudah hadir sekarang.' : ''} Kalau mau cek jam kosong yang bisa dibooking, sebutkan layanannya ya.`;
+  }
+  // Schedule unknown: no claim about the barber, only what we can honestly ask.
+  return slotQuery
+    ? askService
+    : `Aku belum bisa memastikan jadwal ${name} ${dateWord.lower} dari data yang terverifikasi, Kak. ${askService}`;
+}
+
 function buildAvailabilityReply({ mode, barberName, availability }) {
   if (availability?.reason_code === 'service_required') {
     return 'Kak mau layanan apa? Aku perlu durasi layanannya untuk mengecek slot yang sesuai.';
@@ -638,6 +670,21 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
         availability = { success: false, reason_code: 'tool_error' };
       }
       availabilityReply = buildAvailabilityReply({ mode: 'single_barber', barberName: barberMatch.barber.name, availability });
+      if (availability?.reason_code === 'service_required') {
+        // Bookable slots need a service duration, but "is he working?" does not.
+        let scheduleStatus = null;
+        try {
+          scheduleStatus = await getSchedule(supabase, { barberId: barberMatch.barber.id, date: availParams.date });
+        } catch (_error) {
+          scheduleStatus = null;
+        }
+        availabilityReply = buildServiceRequiredBarberReply({
+          barberName: barberMatch.barber.name,
+          date: availParams.date,
+          scheduleStatus,
+          slotQuery: isBookableSlotQuery(text) || Boolean(availParams.time),
+        });
+      }
       telemetryResult = { availability, barberId: barberMatch.barber.id, latency: Date.now() - availStart };
     } else if (barberMatch.status !== 'verified' && effectiveOrchestrationDecision.intent !== 'branch_availability_query'
       && (barberMatch.status === 'ambiguous' || BARBER_NAME_ATTEMPT_PATTERN.test(String(text || '')))) {

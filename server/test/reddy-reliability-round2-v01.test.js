@@ -114,22 +114,27 @@ test('FACTUAL 3: wrong duration is corrected independently of price', async () =
   assert.equal(res.mismatches[0].type, 'duration');
 });
 
-test('FACTUAL 4: fails open (does not block) when the live catalog is unreachable', async () => {
+test('FACTUAL 4: fails CLOSED on a current price claim when the live catalog is unreachable (c2079db8 contract)', async () => {
   resetServicesCatalogCache();
   const res = await guardFactualServiceNumbers('Gentleman Grooming Rp95.000 ya kak.', {
     supabase: null, serviceId: 'gentleman-grooming',
   });
-  assert.equal(res.blocked, false);
-  assert.equal(res.sanitizedReply, 'Gentleman Grooming Rp95.000 ya kak.');
+  assert.equal(res.blocked, true);
+  assert.equal(res.action, 'blocked_unverified');
+  assert.doesNotMatch(res.sanitizedReply, /Rp95\.000/);
+  // Replies with no current price/duration claim are untouched even without a catalog.
+  const plain = await guardFactualServiceNumbers('Sampai ketemu ya kak.', { supabase: null });
+  assert.equal(plain.blocked, false);
 });
 
-test('FACTUAL 5: fails open when the service cannot be identified unambiguously', async () => {
+test('FACTUAL 5: a current price with no identifiable service is blocked as unverified (claim-local identity)', async () => {
   resetServicesCatalogCache();
   const supabase = fakeSupabaseWithServices([
     { id: 'gg', name: 'Gentleman Grooming', price: 120000, duration_minutes: 75, is_active: true },
   ]);
   const res = await guardFactualServiceNumbers('Total tagihanmu Rp95.000 ya kak.', { supabase });
-  assert.equal(res.blocked, false);
+  assert.equal(res.blocked, true);
+  assert.equal(res.action, 'blocked_unverified');
 });
 
 test('FACTUAL 6: identifies service from free text alias when no serviceId is supplied', async () => {

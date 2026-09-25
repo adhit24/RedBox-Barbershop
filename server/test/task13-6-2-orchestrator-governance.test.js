@@ -88,7 +88,7 @@ test('O2 "Ok" in active session is acknowledge_only', async () => {
     send: async () => ({ status: 'sent' }),
     logTelemetry: () => {},
   });
-  assert.equal(runtime.reply, 'Siap Kak.');
+  assert.equal(runtime.reply, 'Siap, Kak.');
   assert.equal(crmCalls, 0);
 });
 
